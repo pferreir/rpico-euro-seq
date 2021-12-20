@@ -1,0 +1,49 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Attach Debug (BMP)",
+            "cwd": "${workspaceRoot}",
+            "executable": "./target/thumbv6m-none-eabi/release/midi-embedded",
+            "request": "attach",
+            "type": "cortex-debug",
+            "servertype": "bmp",
+            "interface": "swd",
+            "device": "RP2040",
+            "BMPGDBSerialPort" : "/dev/cu.usbmodemBFD07DF01",
+            "runToMain": true,
+            "preLaunchCommands":[
+                "set async-remote false",
+                "set remote-timeout 20"
+            ],
+            "preRestartCommands": [
+                "enable breakpoint",
+                "break main"
+            ],
+            "svdFile": "${workspaceRoot}/.vscode/rp2040.svd",
+            "gdbPath": "/usr/local/bin/arm-none-eabi-gdb",
+        },
+        {   "name": "Pico Debug",
+            "device": "RP2040",
+            "gdbPath": "/usr/local/bin/arm-none-eabi-gdb",
+            "cwd": "${workspaceRoot}",
+            "executable": "./target/thumbv6m-none-eabi/release/midi-embedded",
+            "request": "launch",
+            "type": "cortex-debug",
+            "servertype": "openocd",
+            "configFiles": [
+                "interface/cmsis-dap.cfg",
+                "target/rp2040-core0.cfg"
+            ],
+            "openOCDLaunchCommands": [
+                "transport select swd",
+                "adapter speed 4000"
+            ],            "svdFile": "${workspaceRoot}/.vscode/rp2040.svd",
+            "runToMain": true,
+            "postRestartCommands": [
+                "break main",
+                "continue"
+            ]
+        }
+    ]
+}

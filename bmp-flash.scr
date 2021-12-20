@@ -1,0 +1,8 @@
+monitor swdp_scan
+monitor traceswo decode
+attach 1
+file ./target/thumbv6m-none-eabi/release/midi-embedded
+load
+compare-sections
+kill
+quit

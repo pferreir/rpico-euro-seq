@@ -1,0 +1,33 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Flash",
+            "type": "shell",
+            "command": "/usr/local/bin/arm-none-eabi-gdb -q -batch -nx -ex 'target extended-remote /dev/cu.usbmodemBFD07DF01' -x bmp-flash.scr",
+            "presentation": {
+                "echo": true,
+                "reveal": "always",
+                "focus": false,
+                "panel": "shared"
+            },
+            "group": "build",
+            "problemMatcher": [],
+            "dependsOn": [
+                "rust: cargo build release"
+            ]
+        },
+        {
+            "type": "cargo",
+            "command": "build",
+            "args": ["--release"],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "group": "build",
+            "label": "rust: cargo build release"
+        }
+    ]
+}
