@@ -11,8 +11,9 @@ mod dac;
 mod encoder;
 mod midi_in;
 mod screen;
+mod switches;
 
-use core::ops::DerefMut;
+use core::{ops::DerefMut, convert::Into};
 
 use cortex_m::{
     interrupt::{free, Mutex},
@@ -106,7 +107,7 @@ fn main() -> ! {
         pins.gpio15.into_push_pull_output(),
     );
 
-    let mut midi_in = midi_in::MidiIn::new(
+    midi_in::init_midi_in(
         &mut pac.RESETS,
         pac.UART0,
         pins.gpio1.into_mode::<hal::gpio::FunctionUart>(),
@@ -137,8 +138,10 @@ fn main() -> ! {
         pins.gpio0.into_floating_input(),
     );
 
-    let sw1 = pins.gpio2.into_pull_up_input();
-    let sw2 = pins.gpio3.into_pull_up_input();
+    switches::init_switches(
+        pins.gpio2.into_pull_up_input(),
+        pins.gpio3.into_pull_up_input(),
+    );
 
     init_interrupts();
 
@@ -146,6 +149,7 @@ fn main() -> ! {
         // enable edges in GPIO21 and GPIO22
         NVIC::unmask(Interrupt::IO_IRQ_BANK0);
         NVIC::unmask(Interrupt::SPI0_IRQ);
+        NVIC::unmask(Interrupt::UART0_IRQ);
     }
 
     let mut trig1 = pins.gpio4.into_push_pull_output();
@@ -159,13 +163,18 @@ fn main() -> ! {
     let mut fps = 0;
 
     loop {
-        let mut s = String::<16>::new();
+        let mut s = String::<128>::new();
 
-        free(|cs| {
+        let (sw1, sw2) = free(|cs| {
             if let Some(encoder) = encoder::ROTARY_ENCODER.borrow(cs).borrow_mut().deref_mut() {
-                uwrite!(s, "=> {}", encoder.val).unwrap();
+                uwrite!(s, "=> {}\n", encoder.val).unwrap();
             }
+            let mut singleton = switches::SWITCHES.borrow(cs).borrow_mut();
+            let sw = singleton.as_mut().unwrap();
+            sw.switches()
         });
+
+        uwrite!(s, "SW1: {}  SW2: {}", sw1, sw2).unwrap();
         // for counter in 3000..4095 {
         //     delay.delay_ms(1);
 
@@ -193,8 +202,8 @@ fn main() -> ! {
         screen.clear(Rgb565::BLACK).unwrap();
 
         Text::new(&s, Point::new(20, 15), style)
-        .draw(&mut screen)
-        .unwrap();
+            .draw(&mut screen)
+            .unwrap();
 
         let diff = (timer.get_counter() - last_tick) as u32;
         if diff >= 1_000_000u32 {
@@ -206,7 +215,25 @@ fn main() -> ! {
         s.truncate(0);
         uwrite!(s, "{} fps", fps).unwrap();
 
-        Text::new(&s, Point::new(20, 55), style)
+        Text::new(&s, Point::new(20, 100 ), style)
+            .draw(&mut screen)
+            .unwrap();
+
+        s.truncate(0);
+        free(|cs| {
+            if let Some(midi_in) = midi_in::MIDI_IN.borrow(cs).borrow_mut().deref_mut() {
+                for msg in midi_in.iter_messages() {
+                    match msg {
+                        embedded_midi::MidiMessage::NoteOff(_, _, _) => uwrite!(s, "NoteOff"),
+                        embedded_midi::MidiMessage::NoteOn(chan, note, vel) => uwrite!(s, "N-{}-{}-{}", Into::<u8>::into(*chan), Into::<u8>::into(*note), Into::<u8>::into(*vel)),
+                        _ => uwrite!(s, "Whatever"),
+                    }.unwrap();
+                    uwrite!(s, "\n").unwrap();
+                }
+            }
+        });
+
+        Text::new(&s, Point::new(20, 160 ), style)
             .draw(&mut screen)
             .unwrap();
 
@@ -219,6 +246,8 @@ fn init_interrupts() {
     let mut pac = unsafe { Peripherals::steal() };
     encoder::init_interrupts(&mut pac);
     screen::init_interrupts(&mut pac);
+    switches::init_interrupts(&mut pac);
+    midi_in::init_interrupts(&mut pac);
 }
 
 #[interrupt]
@@ -226,6 +255,7 @@ fn IO_IRQ_BANK0() {
     free(|cs| {
         let mut pac = unsafe { Peripherals::steal() };
         encoder::handle_irq(cs, &mut pac);
+        switches::handle_irq(cs, &mut pac);
     });
 }
 
@@ -234,5 +264,13 @@ fn SPI0_IRQ() {
     free(|cs| {
         let mut pac = unsafe { Peripherals::steal() };
         screen::handle_irq(cs, &mut pac);
+    });
+}
+
+#[interrupt]
+fn UART0_IRQ() {
+    free(|cs| {
+        let mut pac = unsafe { Peripherals::steal() };
+        midi_in::handle_irq(cs, &mut pac);
     });
 }

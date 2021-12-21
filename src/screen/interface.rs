@@ -55,8 +55,6 @@ where
                 break;
             }
         }
-        // while !spi.is_tx_fifo_empty() {}
-        // while spi.is_busy() {}
         self.dc.set_low().map_err(|_| DisplayError::DCError)?;
         self.send_byte_buf(cmd);
         Ok(())
@@ -70,8 +68,6 @@ where
                 break;
             }
         }
-        // while !spi.is_tx_fifo_empty() {}
-        // while spi.is_busy() {}
         self.dc.set_high().map_err(|_| DisplayError::DCError)?;
         self.send_byte_buf(buf);
 
