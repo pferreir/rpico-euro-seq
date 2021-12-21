@@ -31,7 +31,7 @@ pub enum Error {
 
 pub struct MidiIn<D: UartDevice, RX> {
     driver: DriverMidiIn<UartPeripheral<Enabled, D>>,
-    queue: Queue<MidiMessage, 6>,
+    queue: Queue<MidiMessage, 16>,
     _rx_pin: PhantomData<RX>,
 }
 
@@ -76,6 +76,10 @@ impl<D: UartDevice, RX: PinId + BankPinId> MidiIn<D, RX> {
 
     pub fn iter_messages(&mut self) -> impl Iterator<Item=&MidiMessage> {
         self.queue.iter()
+    }
+
+    pub fn pop_message(&mut self) -> Option<MidiMessage> {
+        self.queue.dequeue()
     }
 }
 

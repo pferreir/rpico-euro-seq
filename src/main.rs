@@ -10,15 +10,13 @@ extern crate ufmt;
 mod dac;
 mod encoder;
 mod midi_in;
+mod programs;
 mod screen;
 mod switches;
 
-use core::{ops::DerefMut, convert::Into};
+use core::{convert::Into, ops::DerefMut};
 
-use cortex_m::{
-    interrupt::{free, Mutex},
-    singleton,
-};
+use cortex_m::interrupt::{free, Mutex};
 use cortex_m_rt::entry;
 use defmt::*;
 use defmt_rtt as _;
@@ -46,6 +44,8 @@ use hal::{
     watchdog::Watchdog,
     Spi, Timer,
 };
+
+use crate::programs::Program;
 
 #[link_section = ".boot2"]
 #[no_mangle]
@@ -122,6 +122,8 @@ fn main() -> ! {
         pins.gpio9.into_push_pull_output(),
     );
 
+    let mut program = programs::DebugProgram::new();
+
     // let raw_image_data = ImageRawLE::<Rgb565>::new(include_bytes!("../assets/ferris.raw"), 86);
     // let ferris = Image::new(&raw_image_data, Point::new(34, 8));
 
@@ -157,10 +159,6 @@ fn main() -> ! {
 
     trig1.set_high().unwrap();
     trig2.set_low().unwrap();
-
-    let mut frame_counter = 0u8;
-    let mut last_tick = 0;
-    let mut fps = 0;
 
     loop {
         let mut s = String::<128>::new();
@@ -199,46 +197,26 @@ fn main() -> ! {
         //         uwrite!(s, "{:?}", e).unwrap();
         //     }
         // }
+
+        free(|cs| {
+            if let Some(midi_in) = midi_in::MIDI_IN.borrow(cs).borrow_mut().deref_mut() {
+                for msg in midi_in.iter_messages() {
+                    program.process_midi(msg)
+                }
+            }
+        });
+
+        program.run(timer.get_counter());
+
         screen.clear(Rgb565::BLACK).unwrap();
 
         Text::new(&s, Point::new(20, 15), style)
             .draw(&mut screen)
             .unwrap();
 
-        let diff = (timer.get_counter() - last_tick) as u32;
-        if diff >= 1_000_000u32 {
-            fps = frame_counter as u32 * 1_000_000 / diff;
-            frame_counter = 0;
-            last_tick = timer.get_counter();
-        }
-
-        s.truncate(0);
-        uwrite!(s, "{} fps", fps).unwrap();
-
-        Text::new(&s, Point::new(20, 100 ), style)
-            .draw(&mut screen)
-            .unwrap();
-
-        s.truncate(0);
-        free(|cs| {
-            if let Some(midi_in) = midi_in::MIDI_IN.borrow(cs).borrow_mut().deref_mut() {
-                for msg in midi_in.iter_messages() {
-                    match msg {
-                        embedded_midi::MidiMessage::NoteOff(_, _, _) => uwrite!(s, "NoteOff"),
-                        embedded_midi::MidiMessage::NoteOn(chan, note, vel) => uwrite!(s, "N-{}-{}-{}", Into::<u8>::into(*chan), Into::<u8>::into(*note), Into::<u8>::into(*vel)),
-                        _ => uwrite!(s, "Whatever"),
-                    }.unwrap();
-                    uwrite!(s, "\n").unwrap();
-                }
-            }
-        });
-
-        Text::new(&s, Point::new(20, 160 ), style)
-            .draw(&mut screen)
-            .unwrap();
+        program.render_screen(&mut screen);
 
         screen.refresh();
-        frame_counter += 1;
     }
 }
 
