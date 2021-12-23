@@ -6,6 +6,7 @@
 
 extern crate nb;
 extern crate ufmt;
+extern crate panic_halt;
 
 mod dac;
 mod encoder;
@@ -13,6 +14,8 @@ mod midi_in;
 mod programs;
 mod screen;
 mod switches;
+mod ui;
+mod util;
 
 use core::{convert::Into, ops::DerefMut};
 
@@ -20,7 +23,6 @@ use cortex_m::interrupt::{free, Mutex};
 use cortex_m_rt::entry;
 use defmt::*;
 use defmt_rtt as _;
-use panic_probe as _;
 
 use embedded_graphics::{
     mono_font::{ascii::FONT_10X20, MonoTextStyle},
@@ -45,7 +47,7 @@ use hal::{
     Spi, Timer,
 };
 
-use crate::programs::Program;
+use crate::{programs::Program, ui::UIInputEvent};
 
 #[link_section = ".boot2"]
 #[no_mangle]
@@ -53,6 +55,7 @@ use crate::programs::Program;
 pub static BOOT2_FIRMWARE: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
 
 pub static TIMER: Mutex<Option<Timer>> = Mutex::new(None);
+
 
 #[entry]
 fn main() -> ! {
@@ -92,7 +95,7 @@ fn main() -> ! {
     let spi = Spi::<_, _, 8>::new(pac.SPI0).init(
         &mut pac.RESETS,
         125_000_000u32.Hz(),
-        16_000_000u32.Hz(),
+        32_000_000u32.Hz(),
         &MODE_3,
     );
 
@@ -123,12 +126,6 @@ fn main() -> ! {
     );
 
     let mut program = programs::DebugProgram::new();
-
-    // let raw_image_data = ImageRawLE::<Rgb565>::new(include_bytes!("../assets/ferris.raw"), 86);
-    // let ferris = Image::new(&raw_image_data, Point::new(34, 8));
-
-    // ferris.draw(&mut screen).unwrap();
-
     let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
 
     dac.init();
@@ -161,18 +158,6 @@ fn main() -> ! {
     trig2.set_low().unwrap();
 
     loop {
-        let mut s = String::<128>::new();
-
-        let (sw1, sw2) = free(|cs| {
-            if let Some(encoder) = encoder::ROTARY_ENCODER.borrow(cs).borrow_mut().deref_mut() {
-                uwrite!(s, "=> {}\n", encoder.val).unwrap();
-            }
-            let mut singleton = switches::SWITCHES.borrow(cs).borrow_mut();
-            let sw = singleton.as_mut().unwrap();
-            sw.switches()
-        });
-
-        uwrite!(s, "SW1: {}  SW2: {}", sw1, sw2).unwrap();
         // for counter in 3000..4095 {
         //     delay.delay_ms(1);
 
@@ -201,18 +186,29 @@ fn main() -> ! {
         free(|cs| {
             if let Some(midi_in) = midi_in::MIDI_IN.borrow(cs).borrow_mut().deref_mut() {
                 for msg in midi_in.iter_messages() {
-                    program.process_midi(msg)
+                    program.process_midi(&msg)
                 }
+            }
+        });
+        free(|cs| {
+            if let Some(encoder) = encoder::ROTARY_ENCODER.borrow(cs).borrow_mut().deref_mut() {
+                for msg in encoder.iter_messages() {
+                    program.process_ui_input(&msg)
+                }
+            }
+        });
+        free(|cs| {
+            if let Some(switches) = switches::SWITCHES.borrow(cs).borrow_mut().deref_mut() {
+                for msg in switches.iter_messages() {
+                    program.process_ui_input(&msg)
+                }
+
             }
         });
 
         program.run(timer.get_counter());
 
         screen.clear(Rgb565::BLACK).unwrap();
-
-        Text::new(&s, Point::new(20, 15), style)
-            .draw(&mut screen)
-            .unwrap();
 
         program.render_screen(&mut screen);
 

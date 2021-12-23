@@ -4,7 +4,7 @@ use cortex_m::interrupt::{free, CriticalSection, Mutex};
 use defmt::Format;
 use embedded_midi::{MidiIn as DriverMidiIn, MidiMessage};
 use embedded_time::rate::{Baud, Hertz};
-use heapless::spsc::Queue;
+use heapless::spsc::{Queue, Iter};
 use rp2040_hal::pac::{Peripherals, RESETS, UART0};
 use rp2040_hal::uart::{DataBits, Enabled, StopBits, UartConfig, UartDevice, UartPeripheral};
 use rp2040_hal::{
@@ -18,6 +18,8 @@ use rp2040_hal::{
     uart::ReadErrorType,
 };
 use ufmt::derive::uDebug;
+
+use crate::util::QueuePoppingIter;
 
 pub static MIDI_IN: Mutex<RefCell<Option<MidiIn<UART0, Gpio1>>>> = Mutex::new(RefCell::new(None));
 
@@ -45,10 +47,7 @@ fn process_error(e: ReadErrorType) -> Error {
 }
 
 impl<D: UartDevice, RX: PinId + BankPinId> MidiIn<D, RX> {
-    pub fn new(
-        uart: UartPeripheral<Enabled, D>,
-        _rx_pin: Pin<RX, FunctionUart>,
-    ) -> Self {
+    pub fn new(uart: UartPeripheral<Enabled, D>, _rx_pin: Pin<RX, FunctionUart>) -> Self {
         Self {
             driver: DriverMidiIn::new(uart),
             _rx_pin: PhantomData,
@@ -74,12 +73,8 @@ impl<D: UartDevice, RX: PinId + BankPinId> MidiIn<D, RX> {
         }
     }
 
-    pub fn iter_messages(&mut self) -> impl Iterator<Item=&MidiMessage> {
-        self.queue.iter()
-    }
-
-    pub fn pop_message(&mut self) -> Option<MidiMessage> {
-        self.queue.dequeue()
+    pub fn iter_messages<'t>(&'t mut self) -> impl Iterator<Item=MidiMessage> + 't {
+        QueuePoppingIter::new(&mut self.queue)
     }
 }
 

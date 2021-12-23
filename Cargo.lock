@@ -405,7 +405,7 @@ dependencies = [
  "itertools",
  "mcp49xx",
  "nb 1.0.0",
- "panic-probe",
+ "panic-halt",
  "rotary-encoder-embedded",
  "rp2040-boot2",
  "rp2040-hal",
@@ -520,14 +520,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "panic-probe"
-version = "0.3.0"
+name = "panic-halt"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ab1f00eac22bd18f8e5cae9555f2820b3a0c166b5b556ee3e203746ea6dcf3a"
-dependencies = [
- "cortex-m",
- "defmt",
-]
+checksum = "de96540e0ebde571dc55c73d60ef407c653844e6f9a1e2fdbd40c07b9252d812"
 
 [[package]]
 name = "paste"

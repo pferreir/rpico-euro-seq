@@ -1,6 +1,7 @@
-use core::{cell::RefCell, ops::DerefMut, marker::PhantomData};
+use core::{cell::RefCell, marker::PhantomData, ops::DerefMut};
 
 use cortex_m::interrupt::{free, CriticalSection, Mutex};
+use heapless::spsc::Queue;
 use rotary_encoder_embedded::{Direction, RotaryEncoder};
 use rp2040_hal::{
     gpio::{
@@ -12,20 +13,43 @@ use rp2040_hal::{
         },
         Pin, PinId,
     },
-    pac::{Peripherals},
+    pac::Peripherals,
 };
+
+use crate::{ui::UIInputEvent, util::QueuePoppingIter};
+
+fn update_turns<const N: usize>(queue: &mut Queue<UIInputEvent, N>, val: i8) {
+    match queue.dequeue() {
+        Some(UIInputEvent::EncoderTurn(n)) => unsafe {
+            if (n + val) != 0 {
+                queue.enqueue_unchecked(UIInputEvent::EncoderTurn(n + val))
+            }
+        },
+        Some(other_event) => {
+            unsafe { queue.enqueue_unchecked(other_event) };
+            queue.enqueue(UIInputEvent::EncoderTurn(val)).unwrap();
+        }
+        None => {
+            unsafe { queue.enqueue_unchecked(UIInputEvent::EncoderTurn(val)) };
+        }
+    }
+}
 
 pub struct Encoder<DT: PinId, CLK: PinId, SW: PinId> {
     driver: RotaryEncoder<Pin<DT, FloatingInput>, Pin<CLK, FloatingInput>>,
-    pub val: i8,
+    event_queue: Queue<UIInputEvent, 32>,
     _sw: PhantomData<SW>,
 }
 
 impl<DT: PinId + BankPinId, CLK: PinId + BankPinId, SW: PinId + BankPinId> Encoder<DT, CLK, SW> {
-    pub fn new(dt: Pin<DT, FloatingInput>, clk: Pin<CLK, FloatingInput>, _switch: Pin<SW, FloatingInput>) -> Self {
+    pub fn new(
+        dt: Pin<DT, FloatingInput>,
+        clk: Pin<CLK, FloatingInput>,
+        _switch: Pin<SW, FloatingInput>,
+    ) -> Self {
         Self {
             driver: RotaryEncoder::new(dt, clk),
-            val: 0,
+            event_queue: Queue::new(),
             _sw: PhantomData,
         }
     }
@@ -36,18 +60,22 @@ impl<DT: PinId + BankPinId, CLK: PinId + BankPinId, SW: PinId + BankPinId> Encod
         let direction = self.driver.direction();
 
         if direction == Direction::Clockwise {
-            self.val += 1;
+            update_turns(&mut self.event_queue, 1)
         } else if direction == Direction::Anticlockwise {
-            self.val -= 1;
+            update_turns(&mut self.event_queue, -1)
         }
     }
 
     pub fn handle_switch(&mut self, state: bool) {
         if state {
-            self.val = -self.val;
+            self.event_queue.enqueue(UIInputEvent::EncoderSwitch(true)).unwrap()
         } else {
-            self.val = 0;
+            self.event_queue.enqueue(UIInputEvent::EncoderSwitch(false)).unwrap()
         }
+    }
+
+    pub fn iter_messages<'t>(&'t mut self) -> impl Iterator<Item=UIInputEvent> + 't {
+        QueuePoppingIter::new(&mut self.event_queue)
     }
 }
 
