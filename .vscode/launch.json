@@ -4,7 +4,7 @@
         {
             "name": "Attach Debug (BMP)",
             "cwd": "${workspaceRoot}",
-            "executable": "./target/thumbv6m-none-eabi/release/midi-embedded",
+            "executable": "${workspaceRoot}/target/thumbv6m-none-eabi/release/midi-embedded",
             "request": "attach",
             "type": "cortex-debug",
             "servertype": "bmp",
@@ -27,7 +27,7 @@
             "device": "RP2040",
             "gdbPath": "/usr/local/bin/arm-none-eabi-gdb",
             "cwd": "${workspaceRoot}",
-            "executable": "./target/thumbv6m-none-eabi/release/midi-embedded",
+            "executable": "${workspaceRoot}/target/thumbv6m-none-eabi/release/midi-embedded",
             "request": "launch",
             "type": "cortex-debug",
             "servertype": "openocd",

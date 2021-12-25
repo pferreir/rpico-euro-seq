@@ -28,7 +28,7 @@ pub struct DebugProgram {
     sw1_state: bool,
     sw2_state: bool,
     mem_usage: u32,
-    last_tick: u64,
+    last_tick: u32,
     frame_counter: u8,
 }
 
@@ -157,10 +157,10 @@ impl Program for DebugProgram {
         }
     }
 
-    fn run(&mut self, program_time: u64) {
-        let diff = (program_time - self.last_tick) as u32;
-        if diff >= 1_000_000u32 {
-            self.fps = (self.frame_counter as u32 * 1_000_000 / diff) as u8;
+    fn run(&mut self, program_time: u32) {
+        let diff = program_time - self.last_tick;
+        if diff >= 1_000u32 {
+            self.fps = (self.frame_counter as u32 * 1_000 / diff) as u8;
             self.frame_counter = 0;
             self.last_tick = program_time;
         }

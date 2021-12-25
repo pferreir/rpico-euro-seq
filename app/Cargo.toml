@@ -1,0 +1,33 @@
+[package]
+authors = ["Pedro Ferreira <pedro@dete.st>"]
+edition = "2018"
+readme = "README.md"
+name = "midi-embedded"
+version = "0.1.0"
+
+[dependencies]
+defmt = "^0.3"
+defmt-rtt = "0.3.0"
+panic-halt = "0.2.0"
+
+cortex-m = "0.7.2"
+cortex-m-rt = "0.7"
+rp2040-hal = { path = "../../rp-hal/rp2040-hal", features = ["eh1_0_alpha", "rt"] }
+embedded-hal = { version = "0.2.5", features = ["unproven"] }
+rp2040-boot2 = "0.2.0"
+embedded-time = "0.12.0"
+st7789 = "0.6.0"
+display-interface = "0.4"
+display-interface-spi = "0.4"
+embedded-graphics = "0.7.1"
+embedded-midi = "0.1.1"
+nb = "1.0.0"
+ufmt = "0.1.0"
+heapless = { version = "0.7.3", features = ["ufmt-impl"] }
+mcp49xx = "0.2.0"
+rotary-encoder-embedded = "0.0.4"
+itertools = { version = "^0.10", default-features = false }
+embedded-dma = "0.1.2"
+stable_deref_trait = { version = "1.2.0", default-features = false }
+byte-slice-cast = { version = "^1.2", default-features = false }
+voice_lib = { path = "../voice_lib" }

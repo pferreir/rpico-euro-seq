@@ -24,5 +24,5 @@ pub trait Program {
     where
         D: DrawTarget<Color = Rgb565>,
         <D as DrawTarget>::Error: Debug;
-    fn run(&mut self, program_time: u64);
+    fn run(&mut self, program_time: u32);
 }

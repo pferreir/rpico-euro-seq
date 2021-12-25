@@ -32,7 +32,7 @@ pub struct DMASPIInterface<D: SpiDevice, DC: OutputPin, CH1: SingleChannel> {
     tx_buffer: Option<BufferWrapper<u8>>,
 }
 
-impl<'t, D: SpiDevice, DC: OutputPin, CH1: SingleChannel> DMASPIInterface<D, DC, CH1> {
+impl<D: SpiDevice, DC: OutputPin, CH1: SingleChannel> DMASPIInterface<D, DC, CH1> {
     pub fn new(ch: CH1, buffer: &'static mut [u8; 1024], spi: Spi<Enabled, D, 8>, dc: DC) -> Self {
         Self {
             tx_buffer: Some(BufferWrapper(buffer, 1024)),
@@ -88,8 +88,7 @@ where
             *ready = false;
         });
 
-        let mut config = SingleBufferingConfig::new(ch, tx_buffer, to);
-        config.pace(Pace::PreferSink);
+        let config = SingleBufferingConfig::new(ch, tx_buffer, to);
         let tx = config.start();
 
         let (ch, tx_buffer, to) = tx.wait();
@@ -122,10 +121,6 @@ where
     }
 
     fn send_byte_buf(&mut self, buf: display_interface::DataFormat) {
-        // let (from, mut to) = self.config_data.take().unwrap();
-        // send_u8(&mut to, buf).unwrap();
-        // self.config_data.replace((from, to));
-
         match buf {
             display_interface::DataFormat::U8(slice) => self._send_byte_buf(slice.iter().cloned()),
             display_interface::DataFormat::U16(slice) => self._send_byte_buf(

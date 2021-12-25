@@ -1,6 +1,8 @@
 use core::marker::PhantomData;
 
+use embedded_midi::Note;
 use heapless::spsc::Queue;
+use voice_lib::NotePair;
 
 pub struct QueuePoppingIter<'t, T, const N: usize> {
     wrapped: &'t mut Queue<T, N>}
@@ -20,4 +22,9 @@ impl<'t, T, const N: usize> Iterator for QueuePoppingIter<'t, T, N> {
         self.wrapped.dequeue()
     }
 
+}
+
+pub fn midi_note_to_lib(n: Note) -> NotePair {
+    let note: u8 =  n.into();
+    (note as i8).into()
 }

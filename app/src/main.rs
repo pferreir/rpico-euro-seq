@@ -1,11 +1,10 @@
 //! Blinks the LED on a Pico board
 //!
 //! This will blink an LED attached to GP25, which is the pin the Pico uses for the on-board LED.
-#![no_std]
-#![no_main]
 
-extern crate nb;
-extern crate ufmt;
+#![no_main]
+#![no_std]
+
 extern crate panic_halt;
 
 mod dac;
@@ -24,22 +23,15 @@ use cortex_m_rt::entry;
 use defmt::*;
 use defmt_rtt as _;
 
-use embedded_graphics::{
-    mono_font::{ascii::FONT_10X20, MonoTextStyle},
-    pixelcolor::Rgb565,
-    prelude::*,
-    prelude::{Point, RgbColor},
-    text::Text,
-};
+use embedded_graphics::{pixelcolor::Rgb565, prelude::RgbColor, prelude::*};
 use embedded_hal::{digital::v2::OutputPin, spi::MODE_3};
 use embedded_time::{fixed_point::FixedPoint, rate::Extensions};
-use heapless::String;
 use rp2040_hal as hal;
 use ufmt::uwrite;
 
 use hal::{
     clocks::{init_clocks_and_plls, Clock},
-    dma::{DMAExt, SingleBufferingConfig},
+    dma::DMAExt,
     pac,
     pac::{interrupt, Interrupt, Peripherals, NVIC},
     sio::Sio,
@@ -47,7 +39,7 @@ use hal::{
     Spi, Timer,
 };
 
-use crate::{programs::Program, ui::UIInputEvent};
+use crate::programs::Program;
 
 #[link_section = ".boot2"]
 #[no_mangle]
@@ -56,7 +48,6 @@ pub static BOOT2_FIRMWARE: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
 
 pub static TIMER: Mutex<Option<Timer>> = Mutex::new(None);
 
-
 #[entry]
 fn main() -> ! {
     info!("Program start");
@@ -64,6 +55,10 @@ fn main() -> ! {
     let core = pac::CorePeripherals::take().unwrap();
     let mut watchdog = Watchdog::new(pac.WATCHDOG);
     let sio = Sio::new(pac.SIO);
+
+    // set timer to zero
+    pac.TIMER.timehw.write(|w| unsafe { w.bits(0) });
+    pac.TIMER.timelw.write(|w| unsafe { w.bits(0) });
     let timer = Timer::new(pac.TIMER, &mut pac.RESETS);
 
     // External high-speed crystal on the pico board is 12Mhz
@@ -125,8 +120,7 @@ fn main() -> ! {
         pins.gpio9.into_push_pull_output(),
     );
 
-    let mut program = programs::DebugProgram::new();
-    let style = MonoTextStyle::new(&FONT_10X20, Rgb565::WHITE);
+    let mut program = programs::ConverterProgram::new();
 
     dac.init();
     dac.set_ch1(0x0);
@@ -202,11 +196,10 @@ fn main() -> ! {
                 for msg in switches.iter_messages() {
                     program.process_ui_input(&msg)
                 }
-
             }
         });
 
-        program.run(timer.get_counter());
+        program.run(((timer.get_counter() / 1000) & 0xffffffff) as u32);
 
         screen.clear(Rgb565::BLACK).unwrap();
 
