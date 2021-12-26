@@ -1,15 +1,14 @@
 use core::{
     cell::RefCell,
     ops::Deref,
-    sync::atomic::{compiler_fence, Ordering},
 };
 
-use cortex_m::{delay::Delay, interrupt::free, interrupt::Mutex};
+use cortex_m::{interrupt::free, interrupt::Mutex};
 use display_interface::{DisplayError, WriteOnlyDataCommand};
 use embedded_dma::{ReadBuffer, ReadTarget};
 use embedded_hal::digital::v2::OutputPin;
 use rp2040_hal::{
-    dma::{Pace, SingleBufferingConfig, SingleChannel},
+    dma::{SingleBufferingConfig, SingleChannel},
     spi::{Enabled, SpiDevice},
     Spi,
 };

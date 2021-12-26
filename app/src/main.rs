@@ -7,8 +7,8 @@
 
 extern crate panic_halt;
 
-mod dac;
 mod encoder;
+mod gate_cv;
 mod midi_in;
 mod programs;
 mod screen;
@@ -24,10 +24,9 @@ use defmt::*;
 use defmt_rtt as _;
 
 use embedded_graphics::{pixelcolor::Rgb565, prelude::RgbColor, prelude::*};
-use embedded_hal::{digital::v2::OutputPin, spi::MODE_3};
+use embedded_hal::spi::MODE_3;
 use embedded_time::{fixed_point::FixedPoint, rate::Extensions};
 use rp2040_hal as hal;
-use ufmt::uwrite;
 
 use hal::{
     clocks::{init_clocks_and_plls, Clock},
@@ -112,18 +111,21 @@ fn main() -> ! {
         clocks.peripheral_clock.into(),
     );
 
-    let mut dac = dac::Dac::new(
+    let mut output = gate_cv::GateCVOut::new(
         &mut pac.RESETS,
+        // DAC
         pac.SPI1,
         pins.gpio10.into_mode::<hal::gpio::FunctionSpi>(),
         pins.gpio11.into_mode::<hal::gpio::FunctionSpi>(),
         pins.gpio9.into_push_pull_output(),
+        // gates
+        pins.gpio4.into_push_pull_output(),
+        pins.gpio5.into_push_pull_output()
     );
 
     let mut program = programs::ConverterProgram::new();
 
-    dac.init();
-    dac.set_ch1(0x0);
+    output.init();
 
     encoder::init_encoder(
         pins.gpio21.into_floating_input(),
@@ -145,22 +147,16 @@ fn main() -> ! {
         NVIC::unmask(Interrupt::UART0_IRQ);
     }
 
-    let mut trig1 = pins.gpio4.into_push_pull_output();
-    let mut trig2 = pins.gpio5.into_push_pull_output();
-
-    trig1.set_high().unwrap();
-    trig2.set_low().unwrap();
-
     loop {
         // for counter in 3000..4095 {
         //     delay.delay_ms(1);
 
-        //     dac.set_ch0(counter);
+        //     output.set_ch0(counter);
         // }
         // for counter in 0..1000 {
         //     delay.delay_ms(1);
 
-        //     dac.set_ch0(4095 - counter);
+        //     output.set_ch0(4095 - counter);
         // }
 
         // match midi_in.read_block() {
@@ -204,6 +200,7 @@ fn main() -> ! {
         screen.clear(Rgb565::BLACK).unwrap();
 
         program.render_screen(&mut screen);
+        program.update_output(&mut output);
 
         screen.refresh();
     }

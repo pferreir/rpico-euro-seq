@@ -8,7 +8,7 @@ mod debug;
 pub use debug::DebugProgram;
 pub use converter::ConverterProgram;
 
-use crate::ui::UIInputEvent;
+use crate::{ui::UIInputEvent, gate_cv::{GateCVOut, Output}};
 
 enum ProgramName {
     Debug,
@@ -24,5 +24,6 @@ pub trait Program {
     where
         D: DrawTarget<Color = Rgb565>,
         <D as DrawTarget>::Error: Debug;
+    fn update_output(&self, output: &mut impl Output) {}
     fn run(&mut self, program_time: u32);
 }

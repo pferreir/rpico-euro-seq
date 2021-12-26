@@ -10,14 +10,14 @@ use embedded_graphics::{
     Drawable,
 };
 use embedded_midi::MidiMessage;
-use heapless::{spsc::Queue, String};
+use heapless::{spsc::Queue, String, Vec};
 
 use crate::{
     ui::UIInputEvent,
-    util::{midi_note_to_lib, QueuePoppingIter},
+    util::{midi_note_to_lib, QueuePoppingIter}, gate_cv::Output,
 };
 use ufmt::uwrite;
-use voice_lib::{midi_to_note, NotePair, VoiceState};
+use voice_lib::{NotePair, VoiceState};
 
 use super::Program;
 
@@ -112,7 +112,7 @@ fn draw_notes<'t, D, I: IntoIterator<Item = &'t (NotePair, u32, Option<u32>)>>(
         .build();
 
     for (note, start, end) in slots {
-        let note: i8 = (*note).into();
+        let note: i8 = note.into();
         if (note < from_note) || (note > to_note) {
             continue;
         }
@@ -197,6 +197,30 @@ impl<'t> Program for ConverterProgram<'t> {
 
     fn process_midi(&mut self, msg: &MidiMessage) {
         self.midi_queue.enqueue(msg.clone()).unwrap();
+    }
+
+    fn update_output(&self, output: &mut impl Output) {
+        let voices: Vec<&Option<NotePair>, NUM_VOICES> = self.voice_state.iter_voices().collect();
+
+        match voices[0] {
+            Some(n) => {
+                output.set_ch0(n.into());
+                output.set_gate0(true);
+            },
+            None => {
+                output.set_gate0(false);
+            }
+        }
+
+        match voices[1] {
+            Some(n) => {
+                output.set_ch1(n.into());
+                output.set_gate1(true);
+            },
+            None => {
+                output.set_gate1(false);
+            }
+        }
     }
 
     fn run(&mut self, program_time: u32) {

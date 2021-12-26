@@ -1,4 +1,4 @@
-use core::{cell::RefCell, marker::PhantomData, ops::DerefMut};
+use core::{cell::RefCell, ops::DerefMut};
 
 use cortex_m::interrupt::{free, CriticalSection, Mutex};
 use embedded_hal::digital::v2::InputPin;
@@ -15,11 +15,6 @@ use crate::{ui::UIInputEvent, util::QueuePoppingIter};
 
 pub static SWITCHES: Mutex<RefCell<Option<Switches<Gpio2, Gpio3>>>> =
     Mutex::new(RefCell::new(None));
-
-pub enum Switch {
-    SW1,
-    SW2,
-}
 pub struct Switches<SW1: PinId + BankPinId, SW2: PinId + BankPinId> {
     sw1: Pin<SW1, PullUpInput>,
     sw2: Pin<SW2, PullUpInput>,

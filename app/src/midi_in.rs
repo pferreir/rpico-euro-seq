@@ -4,7 +4,7 @@ use cortex_m::interrupt::{free, CriticalSection, Mutex};
 use defmt::Format;
 use embedded_midi::{MidiIn as DriverMidiIn, MidiMessage};
 use embedded_time::rate::{Baud, Hertz};
-use heapless::spsc::{Queue, Iter};
+use heapless::spsc::Queue;
 use rp2040_hal::pac::{Peripherals, RESETS, UART0};
 use rp2040_hal::uart::{DataBits, Enabled, StopBits, UartConfig, UartDevice, UartPeripheral};
 use rp2040_hal::{

@@ -1,5 +1,5 @@
 use core::{
-    borrow::BorrowMut, cell::RefCell, convert::Infallible, marker::PhantomData, ops::Deref,
+    cell::RefCell, convert::Infallible, marker::PhantomData, ops::Deref,
 };
 
 use cortex_m::{
@@ -10,10 +10,10 @@ use cortex_m::{
 use embedded_graphics::{
     draw_target::DrawTarget,
     pixelcolor::{
-        raw::{RawU16, ToBytes},
+        raw::ToBytes,
         Rgb565,
     },
-    prelude::{OriginDimensions, PixelColor, Point, RgbColor, Size},
+    prelude::{OriginDimensions, Point, RgbColor, Size},
     primitives::Rectangle,
     Pixel,
 };
@@ -27,7 +27,7 @@ use rp2040_hal::{
         },
         Output, Pin, PinId, PushPull,
     },
-    pac::{Peripherals, SPI0, clocks::clk_rtc_ctrl::W},
+    pac::{Peripherals, SPI0},
     spi::{Enabled, SpiDevice},
     Spi,
 };
@@ -43,8 +43,6 @@ const DISPLAY_AREA: Rectangle = Rectangle::new(
     Point::zero(),
     Size::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32),
 );
-
-pub static SCREEN: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(true));
 
 pub struct Screen<
     D: SpiDevice + Deref + 'static,
@@ -190,21 +188,6 @@ pub fn init_screen(
     let mut screen = Screen::new(ch, dma_buffer, spi, clk, mosi, rst, dc, blt);
     screen.init(delay);
     screen
-}
-
-fn with_singleton<S: DrawTarget<Color = Rgb565, Error = Error<Infallible>>, F: Fn(&mut S)>(
-    s: &Mutex<RefCell<Option<S>>>,
-    f: F,
-) {
-    free(|cs| {
-        let mut singleton = s.borrow(cs).borrow_mut();
-        match singleton.as_mut() {
-            Some(s) => f(s),
-            None => {
-                panic!("Screen object not available!");
-            }
-        }
-    });
 }
 
 pub fn init_interrupts(pac: &mut Peripherals) {
