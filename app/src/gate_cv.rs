@@ -76,12 +76,6 @@ impl<
             gate1: gate2,
         }
     }
-
-    pub fn init(&mut self) {
-        let cmd = Command::default();
-        let cmd = cmd.double_gain();
-        self.driver.send(cmd).unwrap();
-    }
 }
 
 impl<
@@ -95,14 +89,14 @@ impl<
 {
     fn set_ch0(&mut self, val: DACVoltage) {
         let cmd = Command::default();
-        let cmd = cmd.channel(Channel::Ch0).value(val.into());
+        let cmd = cmd.channel(Channel::Ch0).double_gain().value(val.into());
         self.driver.send(cmd).unwrap();
     }
 
     fn set_ch1(&mut self, val: DACVoltage) {
         let cmd = Command::default();
 
-        let cmd = cmd.channel(Channel::Ch1).value(val.into());
+        let cmd = cmd.channel(Channel::Ch1).double_gain().value(val.into());
         self.driver.send(cmd).unwrap();
     }
 

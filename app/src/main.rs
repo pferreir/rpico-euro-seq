@@ -125,8 +125,6 @@ fn main() -> ! {
 
     let mut program = programs::ConverterProgram::new();
 
-    output.init();
-
     encoder::init_encoder(
         pins.gpio21.into_floating_input(),
         pins.gpio22.into_floating_input(),
