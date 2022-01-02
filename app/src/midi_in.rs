@@ -1,12 +1,10 @@
 use core::cell::RefCell;
-use core::marker::PhantomData;
 use cortex_m::interrupt::{free, CriticalSection, Mutex};
-use defmt::Format;
 use embedded_midi::{MidiIn as DriverMidiIn, MidiMessage};
 use embedded_time::rate::{Baud, Hertz};
 use heapless::spsc::Queue;
 use rp2040_hal::pac::{Peripherals, RESETS, UART0};
-use rp2040_hal::uart::{DataBits, Enabled, StopBits, UartConfig, UartDevice, UartPeripheral};
+use rp2040_hal::uart::{DataBits, Enabled, Rx, StopBits, UartConfig, UartDevice, UartPeripheral};
 use rp2040_hal::{
     gpio::{
         pin::{
@@ -23,7 +21,7 @@ use crate::util::QueuePoppingIter;
 
 pub static MIDI_IN: Mutex<RefCell<Option<MidiIn<UART0, Gpio1>>>> = Mutex::new(RefCell::new(None));
 
-#[derive(uDebug, Format)]
+#[derive(uDebug)]
 pub enum Error {
     Overrun,
     Break,
@@ -31,10 +29,12 @@ pub enum Error {
     Framing,
 }
 
-pub struct MidiIn<D: UartDevice, RX> {
-    driver: DriverMidiIn<UartPeripheral<Enabled, D>>,
+pub struct MidiIn<D: UartDevice, RX: PinId + BankPinId>
+where
+    Pin<RX, FunctionUart>: Rx<D>,
+{
+    driver: DriverMidiIn<UartPeripheral<Enabled, D, ((), Pin<RX, FunctionUart>)>>,
     queue: Queue<MidiMessage, 16>,
-    _rx_pin: PhantomData<RX>,
 }
 
 fn process_error(e: ReadErrorType) -> Error {
@@ -46,11 +46,13 @@ fn process_error(e: ReadErrorType) -> Error {
     }
 }
 
-impl<D: UartDevice, RX: PinId + BankPinId> MidiIn<D, RX> {
-    pub fn new(uart: UartPeripheral<Enabled, D>, _rx_pin: Pin<RX, FunctionUart>) -> Self {
+impl<D: UartDevice, RX: PinId + BankPinId> MidiIn<D, RX>
+where
+    Pin<RX, FunctionUart>: Rx<D>,
+{
+    pub fn new(uart: UartPeripheral<Enabled, D, ((), Pin<RX, FunctionUart>)>) -> Self {
         Self {
             driver: DriverMidiIn::new(uart),
-            _rx_pin: PhantomData,
             queue: Queue::new(),
         }
     }
@@ -66,14 +68,14 @@ impl<D: UartDevice, RX: PinId + BankPinId> MidiIn<D, RX> {
                     }
                 },
                 Err(e) => match e {
-                    nb::Error::Other(err) => defmt::panic!("{}", process_error(err)),
+                    nb::Error::Other(err) => panic!(),
                     nb::Error::WouldBlock => break,
                 },
             };
         }
     }
 
-    pub fn iter_messages<'t>(&'t mut self) -> impl Iterator<Item=MidiMessage> + 't {
+    pub fn iter_messages<'t>(&'t mut self) -> impl Iterator<Item = MidiMessage> + 't {
         QueuePoppingIter::new(&mut self.queue)
     }
 }
@@ -84,7 +86,7 @@ pub fn init_midi_in(
     rx: Pin<Gpio1, FunctionUart>,
     periph_frequency: Hertz,
 ) {
-    let uart = UartPeripheral::new(device, resets)
+    let uart = UartPeripheral::new(device, ((), rx), resets)
         .enable(
             UartConfig {
                 baudrate: Baud::new(31250),
@@ -95,7 +97,7 @@ pub fn init_midi_in(
             periph_frequency,
         )
         .unwrap();
-    let midi_in = MidiIn::new(uart, rx);
+    let midi_in = MidiIn::new(uart);
     free(|cs| {
         let mut singleton = MIDI_IN.borrow(cs).borrow_mut();
         singleton.replace(midi_in);

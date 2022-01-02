@@ -68,13 +68,17 @@ impl<DT: PinId + BankPinId, CLK: PinId + BankPinId, SW: PinId + BankPinId> Encod
 
     pub fn handle_switch(&mut self, state: bool) {
         if state {
-            self.event_queue.enqueue(UIInputEvent::EncoderSwitch(true)).unwrap()
+            self.event_queue
+                .enqueue(UIInputEvent::EncoderSwitch(true))
+                .unwrap()
         } else {
-            self.event_queue.enqueue(UIInputEvent::EncoderSwitch(false)).unwrap()
+            self.event_queue
+                .enqueue(UIInputEvent::EncoderSwitch(false))
+                .unwrap()
         }
     }
 
-    pub fn iter_messages<'t>(&'t mut self) -> impl Iterator<Item=UIInputEvent> + 't {
+    pub fn iter_messages<'t>(&'t mut self) -> impl Iterator<Item = UIInputEvent> + 't {
         QueuePoppingIter::new(&mut self.event_queue)
     }
 }
