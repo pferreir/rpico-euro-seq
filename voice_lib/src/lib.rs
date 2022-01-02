@@ -10,7 +10,7 @@ use ufmt::{derive::uDebug, uDisplay, uWrite, uwrite, Formatter};
 macro_rules! make_array {
     ($n:expr, $constructor:expr) => {{
         unsafe {
-            let mut items: [_; $n] = mem::uninitialized();
+            let mut items: [_; $n] = mem::MaybeUninit::uninit().assume_init();
             for (i, place) in items.iter_mut().enumerate() {
                 ptr::write(place, $constructor(i));
             }
@@ -31,7 +31,7 @@ pub enum Note {
     Gb = 6,
     G = 7,
     Ab = 8,
-    A = 9 ,
+    A = 9,
     Bb = 10,
     B = 11,
 }
@@ -82,7 +82,7 @@ impl uDisplay for NotePair {
 }
 
 pub fn midi_to_note(midi: i8) -> NotePair {
-    let note = match (midi - 24) % 12 {
+    let note = match (midi - 12) % 12 {
         0 => Note::C,
         1 => Note::Db,
         2 => Note::D,
@@ -143,10 +143,10 @@ impl<const N: usize> VoiceHistory<N> {
         self.content.last()
     }
 
-    pub fn since(&self, t: u32) -> impl Iterator<Item=&(NotePair, u32, Option<u32>)> {
-        self.content.iter().filter(move |entry| {
-            entry.1 >= t || entry.2.unwrap_or(0) >= t
-        })
+    pub fn since(&self, t: u32) -> impl Iterator<Item = &(NotePair, u32, Option<u32>)> {
+        self.content
+            .iter()
+            .filter(move |entry| entry.1 >= t || entry.2.unwrap_or(0) >= t)
     }
 }
 
@@ -198,13 +198,7 @@ impl<'t, const NUM_VOICES: usize, const SIZE_HISTORY: usize>
             .queue
             .iter_mut()
             .zip(self.history.iter_mut())
-            .find(|(v, _)| {
-                if let Some(np) = v {
-                    *np == n
-                } else {
-                    false
-                }
-            });
+            .find(|(v, _)| if let Some(np) = v { *np == n } else { false });
         if let Some((q, h)) = voice {
             *q = None;
             h.end_note(now);
@@ -212,11 +206,11 @@ impl<'t, const NUM_VOICES: usize, const SIZE_HISTORY: usize>
         // otherwise, this is a "zombie voice" which will die silently
     }
 
-    pub fn since(&self, t: u32) -> impl Iterator<Item=&(NotePair, u32, Option<u32>)> {
+    pub fn since(&self, t: u32) -> impl Iterator<Item = &(NotePair, u32, Option<u32>)> {
         self.history.iter().flat_map(move |h| h.since(t))
     }
 
-    pub fn iter_voices(&self) -> impl Iterator<Item=&Option<NotePair>> {
+    pub fn iter_voices(&self) -> impl Iterator<Item = &Option<NotePair>> {
         self.queue.iter()
     }
 }
