@@ -1,5 +1,8 @@
 use core::{
-    cell::RefCell, convert::Infallible, marker::PhantomData, ops::Deref,
+    cell::RefCell,
+    convert::Infallible,
+    marker::PhantomData,
+    ops::Deref
 };
 
 use cortex_m::{
@@ -10,7 +13,7 @@ use cortex_m::{
 use embedded_graphics::{
     draw_target::DrawTarget,
     pixelcolor::{
-        raw::ToBytes,
+        raw::{RawU16, ToBytes},
         Rgb565,
     },
     prelude::{OriginDimensions, Point, RgbColor, Size},
@@ -31,14 +34,19 @@ use rp2040_hal::{
     spi::{Enabled, SpiDevice},
     Spi,
 };
-use st7789::{Error, ST7789};
 
-use self::interface::{DMASPIInterface, SPI_DEVICE_READY};
+use st7789_dma::ST7789DMA;
 
-mod interface;
+mod st7789_dma;
 
-const SCREEN_WIDTH: usize = 240;
-const SCREEN_HEIGHT: usize = 240;
+pub type ScreenWithPins =
+    Screen<SPI0, Channel<CH0>, Gpio18, Gpio19, Gpio14, Pin<Gpio13, Output<PushPull>>, Gpio15>;
+
+pub const SPI_DEVICE_READY: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(true));
+
+pub const DMA_BUFFER_SIZE: usize = 1024;
+pub const SCREEN_WIDTH: usize = 240;
+pub const SCREEN_HEIGHT: usize = 240;
 const DISPLAY_AREA: Rectangle = Rectangle::new(
     Point::zero(),
     Size::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32),
@@ -59,8 +67,8 @@ pub struct Screen<
     _rst: PhantomData<RST>,
     _dc: PhantomData<DC>,
     _blt: PhantomData<BLT>,
-    st7789: ST7789<DMASPIInterface<D, DC, CH>, Pin<RST, Output<PushPull>>>,
-    video_buffer: [Rgb565; SCREEN_WIDTH * SCREEN_HEIGHT],
+    st7789: ST7789DMA<CH, D, Pin<RST, Output<PushPull>>, DC, Infallible>,
+    video_buffer: &'static mut [Rgb565; SCREEN_WIDTH * SCREEN_HEIGHT],
 }
 impl<
         D: SpiDevice + Deref,
@@ -68,25 +76,24 @@ impl<
         CLK: PinId + BankPinId,
         MOSI: PinId + BankPinId,
         RST: PinId + BankPinId,
-        DC: OutputPin,
+        DC: OutputPin<Error = Infallible>,
         BLT: PinId + BankPinId,
     > Screen<D, CH, CLK, MOSI, RST, DC, BLT>
 {
     pub fn new(
+        dma_buffer: &'static mut [u8; DMA_BUFFER_SIZE],
         ch: CH,
-        dma_buffer: &'static mut [u8; 1024],
         spi: Spi<Enabled, D, 8>,
         _clk: Pin<CLK, FunctionSpi>,
         _mosi: Pin<MOSI, FunctionSpi>,
-        rst: Pin<RST, Output<PushPull>>,
         dc: DC,
+        rst: Pin<RST, Output<PushPull>>,
         mut blt: Pin<BLT, Output<PushPull>>,
+        video_buffer: &'static mut [Rgb565; SCREEN_WIDTH * SCREEN_HEIGHT]
     ) -> Self {
         blt.set_high().unwrap();
 
-        let di = DMASPIInterface::new(ch, dma_buffer, spi, dc);
-        // let di = SPIInterfaceNoCS::new(spi, dc);
-        let st7789: ST7789<_, Pin<RST, Output<PushPull>>> = ST7789::new(di, rst, 240, 240);
+        let st7789 = ST7789DMA::new(dma_buffer, ch, spi, rst, dc, 240, 240);
         Self {
             st7789,
             _ch: PhantomData,
@@ -95,16 +102,16 @@ impl<
             _rst: PhantomData,
             _dc: PhantomData,
             _blt: PhantomData,
-            video_buffer: [Rgb565::BLACK; SCREEN_WIDTH * SCREEN_HEIGHT],
+            video_buffer,
         }
     }
 
     pub fn init(&mut self, delay: &mut Delay) {
         self.st7789.init(delay).unwrap();
         self.st7789
-            .set_orientation(st7789::Orientation::Portrait)
+            .set_orientation(st7789_dma::Orientation::Portrait)
             .unwrap();
-        self.st7789.clear(Rgb565::BLUE).unwrap();
+        // self.st7789.clear(0x0).await.unwrap();
     }
 
     pub fn draw_pixel(&mut self, point: Point, color: Rgb565) {
@@ -122,10 +129,7 @@ impl<
                 0,
                 SCREEN_WIDTH as u16,
                 SCREEN_HEIGHT as u16,
-                self.video_buffer.iter().map(|c| {
-                    let b = c.to_le_bytes();
-                    ((b[1] as u16) << 8) | (b[0] as u16)
-                }),
+                self.video_buffer.iter().cloned(),
             )
             .unwrap();
     }
@@ -137,13 +141,13 @@ impl<
         CLK: PinId + BankPinId,
         MOSI: PinId + BankPinId,
         RST: PinId + BankPinId,
-        DC: OutputPin,
+        DC: OutputPin<Error = Infallible>,
         BLT: PinId + BankPinId,
     > DrawTarget for Screen<D, CH, CLK, MOSI, RST, DC, BLT>
 {
     type Color = Rgb565;
 
-    type Error = Error<Infallible>;
+    type Error = st7789_dma::Error<Infallible>;
 
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where
@@ -165,7 +169,7 @@ impl<
         CLK: PinId + BankPinId,
         MOSI: PinId + BankPinId,
         RST: PinId + BankPinId,
-        DC: OutputPin,
+        DC: OutputPin<Error = Infallible>,
         BLT: PinId + BankPinId,
     > OriginDimensions for Screen<D, CH, CLK, MOSI, RST, DC, BLT>
 {
@@ -175,6 +179,7 @@ impl<
 }
 
 pub fn init_screen(
+    dma_buffer: &'static mut [u8; DMA_BUFFER_SIZE],
     ch: Channel<CH0>,
     spi: Spi<Enabled, SPI0, 8>,
     delay: &mut Delay,
@@ -183,17 +188,16 @@ pub fn init_screen(
     rst: Pin<Gpio14, Output<PushPull>>,
     dc: Pin<Gpio13, Output<PushPull>>,
     blt: Pin<Gpio15, Output<PushPull>>,
-) -> Screen<SPI0, Channel<CH0>, Gpio18, Gpio19, Gpio14, Pin<Gpio13, Output<PushPull>>, Gpio15> {
-    let dma_buffer = singleton!(: [u8; 1024] = [0; 1024]).unwrap();
-    let mut screen = Screen::new(ch, dma_buffer, spi, clk, mosi, rst, dc, blt);
+    video_buffer: &'static mut [Rgb565; SCREEN_WIDTH * SCREEN_HEIGHT]
+) -> ScreenWithPins {
+    let mut screen = Screen::new(dma_buffer, ch, spi, clk, mosi, dc, rst, blt, video_buffer);
     screen.init(delay);
+    screen.clear(Rgb565::BLUE).unwrap();
     screen
 }
 
 pub fn init_interrupts(pac: &mut Peripherals) {
-    pac.SPI0.sspimsc.modify(|_, w| {
-        w.txim().set_bit()
-    });
+    pac.SPI0.sspimsc.modify(|_, w| w.txim().set_bit());
 }
 
 pub fn handle_irq(cs: &CriticalSection, pac: &mut Peripherals) {
@@ -203,7 +207,5 @@ pub fn handle_irq(cs: &CriticalSection, pac: &mut Peripherals) {
     if reg.txmis().bit_is_set() {
         *ready = true;
     }
-    pac.SPI0.sspimsc.modify(|_, w| {
-        w.txim().clear_bit()
-    });
+    pac.SPI0.sspimsc.modify(|_, w| w.txim().clear_bit());
 }

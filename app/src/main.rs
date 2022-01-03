@@ -18,7 +18,10 @@ mod util;
 
 use core::{convert::Into, ops::DerefMut};
 
-use cortex_m::interrupt::{free, Mutex};
+use cortex_m::{
+    interrupt::{free, Mutex},
+    singleton,
+};
 use cortex_m_rt::entry;
 use defmt::*;
 use defmt_rtt as _;
@@ -93,7 +96,11 @@ fn main() -> ! {
         &MODE_3,
     );
 
+    let dma_buffer =
+        singleton!(: [u8; screen::DMA_BUFFER_SIZE] = [0; screen::DMA_BUFFER_SIZE]).unwrap();
+    let video_buffer = singleton!(: [Rgb565; screen::SCREEN_HEIGHT * screen::SCREEN_WIDTH] = [Rgb565::BLACK; screen::SCREEN_HEIGHT * screen::SCREEN_WIDTH]).unwrap();
     let mut screen = screen::init_screen(
+        dma_buffer,
         dma.ch0,
         spi,
         &mut delay,
@@ -102,6 +109,7 @@ fn main() -> ! {
         pins.gpio14.into_push_pull_output(),
         pins.gpio13.into_push_pull_output(),
         pins.gpio15.into_push_pull_output(),
+        video_buffer,
     );
 
     midi_in::init_midi_in(
@@ -120,10 +128,10 @@ fn main() -> ! {
         pins.gpio9.into_push_pull_output(),
         // gates
         pins.gpio4.into_push_pull_output(),
-        pins.gpio5.into_push_pull_output()
+        pins.gpio5.into_push_pull_output(),
     );
 
-    let mut program = programs::ConverterProgram::new();
+    let mut program = programs::DebugProgram::new();
 
     encoder::init_encoder(
         pins.gpio21.into_floating_input(),

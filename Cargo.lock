@@ -74,12 +74,6 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "byte-slice-cast"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0a5e3906bcbf133e33c1d4d95afc664ad37fbdb9f6568d8043e7ea8c27d93d3"
-
-[[package]]
-name = "byte-slice-cast"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d30c751592b77c499e7bce34d99d67c2c11bdc0574e9a488ddade14150a4698"
@@ -213,23 +207,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "display-interface"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7517c040926d7b02b111884aa089177db80878533127f7c1b480d852c5fb4112"
-
-[[package]]
-name = "display-interface-spi"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "489378ad054862146fbd1f09f51d585ccbe4bd1e2feadcda2a13ac33f840e1a5"
-dependencies = [
- "byte-slice-cast 0.3.5",
- "display-interface",
- "embedded-hal 0.2.6",
 ]
 
 [[package]]
@@ -389,13 +366,11 @@ checksum = "bc4010833aea396656c2f91ee704d51a6f1329ec2ab56ffd00bfd56f7481ea94"
 name = "midi-embedded"
 version = "0.1.0"
 dependencies = [
- "byte-slice-cast 1.2.0",
+ "byte-slice-cast",
  "cortex-m",
  "cortex-m-rt",
  "defmt",
  "defmt-rtt",
- "display-interface",
- "display-interface-spi",
  "embedded-dma",
  "embedded-graphics",
  "embedded-hal 0.2.6",
@@ -409,7 +384,6 @@ dependencies = [
  "rotary-encoder-embedded",
  "rp2040-boot2",
  "rp2040-hal",
- "st7789",
  "stable_deref_trait",
  "ufmt",
  "voice_lib",
@@ -656,7 +630,7 @@ dependencies = [
 
 [[package]]
 name = "rp2040-hal"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "cortex-m",
  "critical-section",
@@ -723,19 +697,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "511254be0c5bcf062b019a6c89c01a664aa359ded62f78aa72c6fc137c0590e5"
 dependencies = [
  "lock_api",
-]
-
-[[package]]
-name = "st7789"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cba7306a9ca07ffcafd13ac1eaac2d5cedc8e9fc0d342ef674e0f0d059c8f8a9"
-dependencies = [
- "display-interface",
- "embedded-graphics-core",
- "embedded-hal 0.2.6",
- "heapless",
- "nb 1.0.0",
 ]
 
 [[package]]
