@@ -18,6 +18,7 @@ mod util;
 
 use core::{convert::Into, ops::DerefMut};
 
+use cassette::{pin_mut, Cassette};
 use cortex_m::{
     interrupt::{free, Mutex},
     singleton,
@@ -33,7 +34,6 @@ use rp2040_hal as hal;
 
 use hal::{
     clocks::{init_clocks_and_plls, Clock},
-    dma::DMAExt,
     pac,
     pac::{interrupt, Interrupt, Peripherals, NVIC},
     sio::Sio,
@@ -42,6 +42,7 @@ use hal::{
 };
 
 use crate::programs::Program;
+use screen::{Screen, ScreenDriverWithPins};
 
 #[link_section = ".boot2"]
 #[no_mangle]
@@ -49,6 +50,55 @@ use crate::programs::Program;
 pub static BOOT2_FIRMWARE: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
 
 pub static TIMER: Mutex<Option<Timer>> = Mutex::new(None);
+
+async fn main_loop(
+    program: &mut impl Program,
+    scr: &mut Screen,
+    mut screen_driver: &mut ScreenDriverWithPins,
+    output: &mut gate_cv::GaveCVOutWithPins,
+    timer: &Timer,
+    delay: &mut cortex_m::delay::Delay
+) -> ! {
+
+    let buffer_addr = unsafe { scr.buffer_addr() };
+
+    loop {
+        free(|cs| {
+            if let Some(midi_in) = midi_in::MIDI_IN.borrow(cs).borrow_mut().deref_mut() {
+                for msg in midi_in.iter_messages() {
+                    program.process_midi(&msg)
+                }
+            }
+        });
+        free(|cs| {
+            if let Some(encoder) = encoder::ROTARY_ENCODER.borrow(cs).borrow_mut().deref_mut() {
+                for msg in encoder.iter_messages() {
+                    program.process_ui_input(&msg)
+                }
+            }
+        });
+        free(|cs| {
+            if let Some(switches) = switches::SWITCHES.borrow(cs).borrow_mut().deref_mut() {
+                for msg in switches.iter_messages() {
+                    program.process_ui_input(&msg)
+                }
+            }
+        });
+
+        let prog_time = ((timer.get_counter() / 1000) & 0xffffffff) as u32;
+        program.run(prog_time);
+
+        scr.clear(Rgb565::BLACK).unwrap();
+        // scr.clear(Rgb565::new(((prog_time * 23) % 255) as u8, (prog_time % 255) as u8, ((prog_time * 31) % 255) as u8)).unwrap();
+
+        program.render_screen(scr);
+        program.update_output(output);
+
+        let mut p = unsafe { pac::Peripherals::steal() };
+
+        screen::refresh(&mut p.DMA, p.SPI0, buffer_addr, &mut screen_driver, delay).await;
+    }
+}
 
 #[entry]
 fn main() -> ! {
@@ -77,6 +127,12 @@ fn main() -> ! {
     .ok()
     .unwrap();
 
+    // bring up DMA
+    pac.RESETS.reset.modify(|_, w| {
+        w.dma().clear_bit()
+    });
+    while pac.RESETS.reset_done.read().dma().bit_is_clear() {}
+
     let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
 
     let pins = hal::gpio::Pins::new(
@@ -86,9 +142,6 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
-    // Initialize DMA.
-    let dma = pac.DMA.split(&mut pac.RESETS);
-
     let spi = Spi::<_, _, 8>::new(pac.SPI0).init(
         &mut pac.RESETS,
         125_000_000u32.Hz(),
@@ -96,21 +149,19 @@ fn main() -> ! {
         &MODE_3,
     );
 
-    let dma_buffer =
-        singleton!(: [u8; screen::DMA_BUFFER_SIZE] = [0; screen::DMA_BUFFER_SIZE]).unwrap();
-    let video_buffer = singleton!(: [Rgb565; screen::SCREEN_HEIGHT * screen::SCREEN_WIDTH] = [Rgb565::BLACK; screen::SCREEN_HEIGHT * screen::SCREEN_WIDTH]).unwrap();
-    let mut screen = screen::init_screen(
-        dma_buffer,
-        dma.ch0,
-        spi,
-        &mut delay,
+    let screen_pins = (
         pins.gpio18.into_mode::<hal::gpio::FunctionSpi>(),
         pins.gpio19.into_mode::<hal::gpio::FunctionSpi>(),
         pins.gpio14.into_push_pull_output(),
         pins.gpio13.into_push_pull_output(),
         pins.gpio15.into_push_pull_output(),
-        video_buffer,
     );
+
+    let (scr, screen_driver) = singleton!(: (Screen, ScreenDriverWithPins) = screen::init_screen(
+        spi,
+        &mut delay,
+        screen_pins
+    )).unwrap();
 
     midi_in::init_midi_in(
         &mut pac.RESETS,
@@ -151,65 +202,17 @@ fn main() -> ! {
         NVIC::unmask(Interrupt::IO_IRQ_BANK0);
         NVIC::unmask(Interrupt::SPI0_IRQ);
         NVIC::unmask(Interrupt::UART0_IRQ);
+        NVIC::unmask(Interrupt::DMA_IRQ_0);
     }
 
-    loop {
-        // for counter in 3000..4095 {
-        //     delay.delay_ms(1);
+    let main_future = main_loop(&mut program, scr, screen_driver, &mut output, &timer, &mut delay);
 
-        //     output.set_ch0(counter);
-        // }
-        // for counter in 0..1000 {
-        //     delay.delay_ms(1);
+    pin_mut!(main_future);
+    let mut cm = Cassette::new(main_future);
 
-        //     output.set_ch0(4095 - counter);
-        // }
+    cm.poll_on();
 
-        // match midi_in.read_block() {
-
-        //     Ok(event) => {
-        //         s.push_str(match event {
-        //             embedded_midi::MidiMessage::NoteOff(_, _, _) => "NoteOff",
-        //             embedded_midi::MidiMessage::NoteOn(_, _, _) => "NoteOn",
-        //             _ => "Whatever",
-        //         })
-        //         .unwrap();
-        //     }, Err(e) => {
-        //         uwrite!(s, "{:?}", e).unwrap();
-        //     }
-        // }
-
-        free(|cs| {
-            if let Some(midi_in) = midi_in::MIDI_IN.borrow(cs).borrow_mut().deref_mut() {
-                for msg in midi_in.iter_messages() {
-                    program.process_midi(&msg)
-                }
-            }
-        });
-        free(|cs| {
-            if let Some(encoder) = encoder::ROTARY_ENCODER.borrow(cs).borrow_mut().deref_mut() {
-                for msg in encoder.iter_messages() {
-                    program.process_ui_input(&msg)
-                }
-            }
-        });
-        free(|cs| {
-            if let Some(switches) = switches::SWITCHES.borrow(cs).borrow_mut().deref_mut() {
-                for msg in switches.iter_messages() {
-                    program.process_ui_input(&msg)
-                }
-            }
-        });
-
-        program.run(((timer.get_counter() / 1000) & 0xffffffff) as u32);
-
-        screen.clear(Rgb565::BLACK).unwrap();
-
-        program.render_screen(&mut screen);
-        program.update_output(&mut output);
-
-        screen.refresh();
-    }
+    loop {}
 }
 
 fn init_interrupts() {
@@ -233,7 +236,15 @@ fn IO_IRQ_BANK0() {
 fn SPI0_IRQ() {
     free(|cs| {
         let mut pac = unsafe { Peripherals::steal() };
-        screen::handle_irq(cs, &mut pac);
+        screen::handle_spi_irq(cs, &mut pac);
+    });
+}
+
+#[interrupt]
+fn DMA_IRQ_0() {
+    free(|cs| {
+        let mut pac = unsafe { Peripherals::steal() };
+        screen::handle_dma_irq(cs, &mut pac);
     });
 }
 

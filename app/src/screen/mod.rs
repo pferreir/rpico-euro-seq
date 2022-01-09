@@ -1,50 +1,45 @@
-use core::{
-    cell::RefCell,
-    convert::Infallible,
-    marker::PhantomData,
-    ops::Deref
-};
+mod st7789;
+
+use core::{cell::RefCell, convert::Infallible, sync::atomic::{compiler_fence, Ordering}};
 
 use cortex_m::{
     delay::Delay,
     interrupt::{free, CriticalSection, Mutex},
-    singleton,
 };
 use embedded_graphics::{
     draw_target::DrawTarget,
     pixelcolor::{
-        raw::{RawU16, ToBytes},
+        raw::{RawU16},
         Rgb565,
     },
-    prelude::{OriginDimensions, Point, RgbColor, Size},
+    prelude::{OriginDimensions, Point, RawData, RgbColor, Size},
     primitives::Rectangle,
     Pixel,
 };
-use embedded_hal::digital::v2::OutputPin;
 use rp2040_hal::{
-    dma::{Channel, SingleChannel, CH0},
     gpio::{
         pin::{
-            bank0::{BankPinId, Gpio13, Gpio14, Gpio15, Gpio18, Gpio19},
+            bank0::{Gpio13, Gpio14, Gpio15, Gpio18, Gpio19},
             FunctionSpi,
         },
-        Output, Pin, PinId, PushPull,
+        Output, Pin, PushPull,
     },
-    pac::{Peripherals, SPI0},
+    pac::{Peripherals, SPI0, self},
     spi::{Enabled, SpiDevice},
     Spi,
 };
 
-use st7789_dma::ST7789DMA;
+use st7789::{ST7789, Instruction};
 
-mod st7789_dma;
-
-pub type ScreenWithPins =
-    Screen<SPI0, Channel<CH0>, Gpio18, Gpio19, Gpio14, Pin<Gpio13, Output<PushPull>>, Gpio15>;
+pub type ScreenDriverWithPins = ST7789<
+    Spi<Enabled, SPI0, 8>,
+    Pin<Gpio13, Output<PushPull>>,
+    Pin<Gpio14, Output<PushPull>>, Pin<Gpio15, Output<PushPull>>
+>;
 
 pub const SPI_DEVICE_READY: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(true));
+pub const DMA_READY: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(true));
 
-pub const DMA_BUFFER_SIZE: usize = 1024;
 pub const SCREEN_WIDTH: usize = 240;
 pub const SCREEN_HEIGHT: usize = 240;
 const DISPLAY_AREA: Rectangle = Rectangle::new(
@@ -52,102 +47,36 @@ const DISPLAY_AREA: Rectangle = Rectangle::new(
     Size::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32),
 );
 
-pub struct Screen<
-    D: SpiDevice + Deref + 'static,
-    CH: SingleChannel + 'static,
-    CLK: PinId,
-    MOSI: PinId,
-    RST: PinId,
-    DC: OutputPin + 'static,
-    BLT: PinId,
-> {
-    _ch: PhantomData<CH>,
-    _clk: PhantomData<CLK>,
-    _mosi: PhantomData<MOSI>,
-    _rst: PhantomData<RST>,
-    _dc: PhantomData<DC>,
-    _blt: PhantomData<BLT>,
-    st7789: ST7789DMA<CH, D, Pin<RST, Output<PushPull>>, DC, Infallible>,
-    video_buffer: &'static mut [Rgb565; SCREEN_WIDTH * SCREEN_HEIGHT],
+pub struct Screen {
+    pub video_buffer: [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 2],
 }
-impl<
-        D: SpiDevice + Deref,
-        CH: SingleChannel,
-        CLK: PinId + BankPinId,
-        MOSI: PinId + BankPinId,
-        RST: PinId + BankPinId,
-        DC: OutputPin<Error = Infallible>,
-        BLT: PinId + BankPinId,
-    > Screen<D, CH, CLK, MOSI, RST, DC, BLT>
-{
-    pub fn new(
-        dma_buffer: &'static mut [u8; DMA_BUFFER_SIZE],
-        ch: CH,
-        spi: Spi<Enabled, D, 8>,
-        _clk: Pin<CLK, FunctionSpi>,
-        _mosi: Pin<MOSI, FunctionSpi>,
-        dc: DC,
-        rst: Pin<RST, Output<PushPull>>,
-        mut blt: Pin<BLT, Output<PushPull>>,
-        video_buffer: &'static mut [Rgb565; SCREEN_WIDTH * SCREEN_HEIGHT]
-    ) -> Self {
-        blt.set_high().unwrap();
-
-        let st7789 = ST7789DMA::new(dma_buffer, ch, spi, rst, dc, 240, 240);
+impl Screen {
+    pub fn new() -> Self {
         Self {
-            st7789,
-            _ch: PhantomData,
-            _clk: PhantomData,
-            _mosi: PhantomData,
-            _rst: PhantomData,
-            _dc: PhantomData,
-            _blt: PhantomData,
-            video_buffer,
+            video_buffer: [0u8; SCREEN_HEIGHT * SCREEN_WIDTH * 2],
         }
-    }
-
-    pub fn init(&mut self, delay: &mut Delay) {
-        self.st7789.init(delay).unwrap();
-        self.st7789
-            .set_orientation(st7789_dma::Orientation::Portrait)
-            .unwrap();
-        // self.st7789.clear(0x0).await.unwrap();
     }
 
     pub fn draw_pixel(&mut self, point: Point, color: Rgb565) {
         if !DISPLAY_AREA.contains(point) {
             return;
         }
-        let i = point.x + point.y * SCREEN_WIDTH as i32;
-        self.video_buffer[i as usize] = color;
+        let i = (point.x + point.y * SCREEN_WIDTH as i32) * 2;
+        let color: RawU16 = color.into();
+        self.video_buffer[i as usize] = (color.into_inner() >> 8) as u8;
+        self.video_buffer[i as usize + 1] = (color.into_inner() & 0xff) as u8;
     }
 
-    pub fn refresh(&mut self) {
-        self.st7789
-            .set_pixels(
-                0,
-                0,
-                SCREEN_WIDTH as u16,
-                SCREEN_HEIGHT as u16,
-                self.video_buffer.iter().cloned(),
-            )
-            .unwrap();
+    pub unsafe fn buffer_addr(&self) -> (u32, u32) {
+        let ptr = self as *const _ as *const u8;
+        (ptr as u32, self.video_buffer.len() as u32)
     }
 }
 
-impl<
-        D: SpiDevice + Deref,
-        CH: SingleChannel,
-        CLK: PinId + BankPinId,
-        MOSI: PinId + BankPinId,
-        RST: PinId + BankPinId,
-        DC: OutputPin<Error = Infallible>,
-        BLT: PinId + BankPinId,
-    > DrawTarget for Screen<D, CH, CLK, MOSI, RST, DC, BLT>
-{
+impl DrawTarget for Screen {
     type Color = Rgb565;
 
-    type Error = st7789_dma::Error<Infallible>;
+    type Error = st7789::Error<Infallible>;
 
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where
@@ -163,49 +92,158 @@ impl<
     }
 }
 
-impl<
-        D: SpiDevice + Deref,
-        CH: SingleChannel,
-        CLK: PinId + BankPinId,
-        MOSI: PinId + BankPinId,
-        RST: PinId + BankPinId,
-        DC: OutputPin<Error = Infallible>,
-        BLT: PinId + BankPinId,
-    > OriginDimensions for Screen<D, CH, CLK, MOSI, RST, DC, BLT>
-{
-    fn size(&self) -> embedded_graphics::prelude::Size {
-        self.st7789.size()
+impl OriginDimensions for Screen {
+    fn size(&self) -> Size {
+        Size::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)
     }
 }
 
-pub fn init_screen(
-    dma_buffer: &'static mut [u8; DMA_BUFFER_SIZE],
-    ch: Channel<CH0>,
+pub fn init_screen<'t>(
     spi: Spi<Enabled, SPI0, 8>,
     delay: &mut Delay,
-    clk: Pin<Gpio18, FunctionSpi>,
-    mosi: Pin<Gpio19, FunctionSpi>,
-    rst: Pin<Gpio14, Output<PushPull>>,
-    dc: Pin<Gpio13, Output<PushPull>>,
-    blt: Pin<Gpio15, Output<PushPull>>,
-    video_buffer: &'static mut [Rgb565; SCREEN_WIDTH * SCREEN_HEIGHT]
-) -> ScreenWithPins {
-    let mut screen = Screen::new(dma_buffer, ch, spi, clk, mosi, dc, rst, blt, video_buffer);
-    screen.init(delay);
-    screen.clear(Rgb565::BLUE).unwrap();
-    screen
+    (_clk, _mosi, rst, dc, blt): (
+        Pin<Gpio18, FunctionSpi>,
+        Pin<Gpio19, FunctionSpi>,
+        Pin<Gpio14, Output<PushPull>>,
+        Pin<Gpio13, Output<PushPull>>,
+        Pin<Gpio15, Output<PushPull>>,
+    ),
+) -> (
+    Screen,
+    ScreenDriverWithPins,
+) {
+    let mut st7789 = ST7789::new(spi, dc, Some(rst), Some(blt), SCREEN_WIDTH as u16, SCREEN_HEIGHT as u16);
+    st7789.init(delay).unwrap();
+    st7789
+        .set_orientation(st7789::Orientation::Portrait)
+        .unwrap();
+
+    let mut screen = Screen::new();
+    screen.clear(Rgb565::BLACK).unwrap();
+    (screen, st7789)
+}
+
+#[inline(never)]
+fn config_dma<D: SpiDevice>(ch: &pac::dma::CH, src_buf: u32, len: u32, spi: &D) {
+    let dest = &spi.sspdr as *const _ as u32;
+
+    ch.ch_al1_ctrl.write(|w| unsafe {
+        w.data_size()
+            .bits(0) // 0x00 -> 1 byte
+            .incr_read()
+            .bit(true) // incr SRC (mem position)
+            .incr_write()
+            .bit(false) // do not incr DEST (peripheral)
+            .treq_sel()
+            .bits(16) // TREQ 16 = SPI0 TX
+            .chain_to()
+            .bits(0) // chain to itself (don't chain)
+            .en()
+            .bit(true) // enable
+    });
+    ch.ch_read_addr.write(|w| unsafe { w.bits(src_buf) });
+    ch.ch_trans_count.write(|w| unsafe { w.bits(len) });
+    ch.ch_al2_write_addr_trig.write(|w| unsafe { w.bits(dest) });
+
+    cortex_m::asm::dsb();
+    compiler_fence(Ordering::SeqCst);
+}
+
+#[inline(never)]
+pub fn trigger_dma_transfer<SPI: SpiDevice> (
+    dma: &pac::DMA,
+    chan_no: usize,
+    spi: &SPI,
+    (ptr, len): (u32, u32)
+) {
+    free(|cs| {
+        let singleton = DMA_READY;
+        let mut ready = singleton.borrow(cs).borrow_mut();
+        *ready = false;
+    });
+
+    config_dma(&dma.ch[chan_no], ptr, len, spi);
+
+    // trigger transfer
+    // dma.multi_chan_trigger
+    //    .write(|w| unsafe { w.bits(1 << chan_no) });
+
+    // wait
+
+    loop {
+        let ready = free(|cs| {
+            let singleton = DMA_READY;
+            let ready = singleton.borrow(cs).borrow();
+            *ready
+        });
+        if ready {
+            break;
+        }
+    }
+
+    // TODO: get rid of this
+    while dma.ch[chan_no].ch_al1_ctrl.read().busy().bit_is_set() {}
+
+    cortex_m::asm::dsb();
+    compiler_fence(Ordering::SeqCst);
+}
+
+pub async fn refresh<
+    SPI: SpiDevice
+>(
+    dma: &pac::DMA,
+    spi: SPI,
+    video_buf: (u32, u32),
+    screen_driver: &mut ScreenDriverWithPins,
+    delay: &mut cortex_m::delay::Delay
+) {
+    free(|cs| {
+        let singleton = SPI_DEVICE_READY;
+        let mut ready = singleton.borrow(cs).borrow_mut();
+        *ready = false;
+    });
+
+    screen_driver.set_address_window(0, 0, SCREEN_WIDTH as u16, SCREEN_HEIGHT as u16).unwrap();
+    screen_driver.write_command(Instruction::RAMWR).unwrap();
+
+    // let vref: &[u8; 240 * 240 * 2] = unsafe {
+    //     &*(video_buf.0 as *const [u8; 240 * 240 * 2])
+    // };
+    // screen_driver.write_data(vref).unwrap();
+
+    // TODO: get rid of this?
+    while spi.sspsr.read().bsy().bit_is_set() {}
+
+    screen_driver.signal_data().unwrap();
+    trigger_dma_transfer(dma, 0, &spi, video_buf);
 }
 
 pub fn init_interrupts(pac: &mut Peripherals) {
     pac.SPI0.sspimsc.modify(|_, w| w.txim().set_bit());
+    pac.DMA.inte0.modify(|_, w| unsafe { w.bits(0x1) });
 }
 
-pub fn handle_irq(cs: &CriticalSection, pac: &mut Peripherals) {
+pub fn handle_spi_irq(cs: &CriticalSection, pac: &mut Peripherals) {
     let singleton = SPI_DEVICE_READY;
     let mut ready = singleton.borrow(cs).borrow_mut();
     let reg = pac.SPI0.sspmis.read();
     if reg.txmis().bit_is_set() {
         *ready = true;
+        pac.SPI0.sspimsc.modify(|_, w| w.txim().clear_bit());
     }
-    pac.SPI0.sspimsc.modify(|_, w| w.txim().clear_bit());
+}
+
+#[inline(never)]
+pub fn handle_dma_irq(cs: &CriticalSection, pac: &mut Peripherals) {
+    let singleton = DMA_READY;
+    let mut ready = singleton.borrow(cs).borrow_mut();
+
+    if (pac.DMA.ints0.read().bits() & 0x1) > 0 {
+        *ready = true;
+
+        // acknowledge
+        pac.DMA
+            .ints0
+            .modify(|_, w| unsafe { w.ints0().bits(0x1) })
+    }
 }

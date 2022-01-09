@@ -23,8 +23,6 @@ ufmt = "0.1.0"
 heapless = { version = "0.7.3", features = ["ufmt-impl"] }
 mcp49xx = "0.2.0"
 rotary-encoder-embedded = "0.0.4"
-itertools = { version = "^0.10", default-features = false }
 embedded-dma = "0.1.2"
-stable_deref_trait = { version = "1.2.0", default-features = false }
-byte-slice-cast = { version = "^1.2", default-features = false }
 voice_lib = { path = "../voice_lib" }
+cassette = "0.2.3"

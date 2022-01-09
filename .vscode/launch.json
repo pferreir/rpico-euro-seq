@@ -38,7 +38,8 @@
             "openOCDLaunchCommands": [
                 "transport select swd",
                 "adapter speed 4000"
-            ],            "svdFile": "${workspaceRoot}/.vscode/rp2040.svd",
+            ],
+            "svdFile": "${workspaceRoot}/.vscode/rp2040.svd",
             "runToMain": true,
             "postRestartCommands": [
                 "break main",

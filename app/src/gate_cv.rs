@@ -7,11 +7,12 @@ use mcp49xx::interface::SpiInterface;
 use mcp49xx::marker::{DualChannel, Resolution12Bit, Unbuffered};
 use mcp49xx::{Channel, Command, Mcp49xx};
 use rp2040_hal::gpio::PushPullOutput;
+use rp2040_hal::gpio::bank0::{Gpio4, Gpio5, Gpio9, Gpio10, Gpio11};
 use rp2040_hal::gpio::{
     pin::{bank0::BankPinId, FunctionSpi},
     Pin, PinId,
 };
-use rp2040_hal::pac::RESETS;
+use rp2040_hal::pac::{RESETS, SPI1};
 use rp2040_hal::spi::{Enabled, SpiDevice};
 use rp2040_hal::Spi;
 
@@ -23,6 +24,8 @@ pub trait Output {
     fn set_gate0(&mut self, val: bool);
     fn set_gate1(&mut self, val: bool);
 }
+
+pub type GaveCVOutWithPins = GateCVOut<SPI1, Gpio10, Gpio11, Gpio9, Gpio4, Gpio5>;
 
 pub struct GateCVOut<
     D: SpiDevice,

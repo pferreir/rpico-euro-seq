@@ -4,7 +4,7 @@ use core::mem;
 use core::ptr;
 use core::{marker::PhantomData, ops::Index};
 
-use heapless::{spsc::Queue, String, Vec};
+use heapless::{String, Vec};
 use ufmt::{derive::uDebug, uDisplay, uWrite, uwrite, Formatter};
 
 macro_rules! make_array {

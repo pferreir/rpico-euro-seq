@@ -73,16 +73,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
-name = "byte-slice-cast"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d30c751592b77c499e7bce34d99d67c2c11bdc0574e9a488ddade14150a4698"
-
-[[package]]
 name = "byteorder"
 version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
+
+[[package]]
+name = "cassette"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbd8c26731af5780bdbf9b6e7823246b3d462bcaa927802262b338e89115c362"
 
 [[package]]
 name = "cfg-if"
@@ -366,7 +366,7 @@ checksum = "bc4010833aea396656c2f91ee704d51a6f1329ec2ab56ffd00bfd56f7481ea94"
 name = "midi-embedded"
 version = "0.1.0"
 dependencies = [
- "byte-slice-cast",
+ "cassette",
  "cortex-m",
  "cortex-m-rt",
  "defmt",
@@ -377,14 +377,12 @@ dependencies = [
  "embedded-midi",
  "embedded-time",
  "heapless",
- "itertools",
  "mcp49xx",
  "nb 1.0.0",
  "panic-halt",
  "rotary-encoder-embedded",
  "rp2040-boot2",
  "rp2040-hal",
- "stable_deref_trait",
  "ufmt",
  "voice_lib",
 ]
