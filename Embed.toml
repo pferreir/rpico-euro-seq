@@ -1,0 +1,9 @@
+[default.general]
+chip = "RP2040"
+log_level = "WARN"
+
+[default.rtt]
+enabled = true
+channels = [
+    { up = 0, name = "defmt", format = "Defmt" },
+]

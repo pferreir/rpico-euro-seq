@@ -1,11 +1,12 @@
-mod st7789;
+mod st7735;
 
-use core::{cell::RefCell, convert::Infallible, sync::atomic::{compiler_fence, Ordering}};
+use core::{cell::RefCell, convert::Infallible, future::Future, marker::PhantomData, sync::atomic::{compiler_fence, Ordering}, task::Poll};
 
 use cortex_m::{
     delay::Delay,
     interrupt::{free, CriticalSection, Mutex},
 };
+use defmt::info;
 use embedded_graphics::{
     draw_target::DrawTarget,
     pixelcolor::{
@@ -29,9 +30,9 @@ use rp2040_hal::{
     Spi,
 };
 
-use st7789::{ST7789, Instruction};
+use st7735::{ST7735, Instruction};
 
-pub type ScreenDriverWithPins = ST7789<
+pub type ScreenDriverWithPins = ST7735<
     Spi<Enabled, SPI0, 8>,
     Pin<Gpio13, Output<PushPull>>,
     Pin<Gpio14, Output<PushPull>>, Pin<Gpio15, Output<PushPull>>
@@ -40,12 +41,37 @@ pub type ScreenDriverWithPins = ST7789<
 pub const SPI_DEVICE_READY: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(true));
 pub const DMA_READY: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(true));
 
-pub const SCREEN_WIDTH: usize = 240;
-pub const SCREEN_HEIGHT: usize = 240;
+pub const SCREEN_WIDTH: usize = 160;
+pub const SCREEN_HEIGHT: usize = 128;
 const DISPLAY_AREA: Rectangle = Rectangle::new(
     Point::zero(),
     Size::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32),
 );
+
+
+pub struct PollFuture<F: Fn() -> bool> {
+    f: F
+}
+impl<F: Fn() -> bool> Future for PollFuture<F> {
+    type Output = ();
+
+    fn poll(self: core::pin::Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+        if (self.f)() {
+            Poll::Ready(())
+        } else {
+            Poll::Pending
+        }
+    }
+}
+
+impl<F: Fn() -> bool> PollFuture<F> {
+    pub fn new(f: F) -> Self {
+        Self {
+            f
+        }
+    }
+}
+
 
 pub struct Screen {
     pub video_buffer: [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 2],
@@ -76,7 +102,7 @@ impl Screen {
 impl DrawTarget for Screen {
     type Color = Rgb565;
 
-    type Error = st7789::Error<Infallible>;
+    type Error = st7735::Error<Infallible>;
 
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where
@@ -101,7 +127,7 @@ impl OriginDimensions for Screen {
 pub fn init_screen<'t>(
     spi: Spi<Enabled, SPI0, 8>,
     delay: &mut Delay,
-    (_clk, _mosi, rst, dc, blt): (
+    (_clk, _mosi, rst, dc, cs): (
         Pin<Gpio18, FunctionSpi>,
         Pin<Gpio19, FunctionSpi>,
         Pin<Gpio14, Output<PushPull>>,
@@ -112,15 +138,15 @@ pub fn init_screen<'t>(
     Screen,
     ScreenDriverWithPins,
 ) {
-    let mut st7789 = ST7789::new(spi, dc, Some(rst), Some(blt), SCREEN_WIDTH as u16, SCREEN_HEIGHT as u16);
-    st7789.init(delay).unwrap();
-    st7789
-        .set_orientation(st7789::Orientation::Portrait)
+    let mut driver = ST7735::new(spi, dc, Some(rst), cs, SCREEN_WIDTH as u16, SCREEN_HEIGHT as u16);
+    driver.init(delay).unwrap();
+    driver
+        .set_orientation(&st7735::Orientation::Landscape)
         .unwrap();
 
     let mut screen = Screen::new();
     screen.clear(Rgb565::BLACK).unwrap();
-    (screen, st7789)
+    (screen, driver)
 }
 
 #[inline(never)]
@@ -150,7 +176,7 @@ fn config_dma<D: SpiDevice>(ch: &pac::dma::CH, src_buf: u32, len: u32, spi: &D) 
 }
 
 #[inline(never)]
-pub fn trigger_dma_transfer<SPI: SpiDevice> (
+pub async fn trigger_dma_transfer<SPI: SpiDevice> (
     dma: &pac::DMA,
     chan_no: usize,
     spi: &SPI,
@@ -181,8 +207,10 @@ pub fn trigger_dma_transfer<SPI: SpiDevice> (
         }
     }
 
+    // while dma.ch[chan_no].ch_al1_ctrl.read().busy().bit_is_set() {}
+    
     // TODO: get rid of this
-    while dma.ch[chan_no].ch_al1_ctrl.read().busy().bit_is_set() {}
+    PollFuture::new(|| !dma.ch[chan_no].ch_al1_ctrl.read().busy().bit_is_set()).await;
 
     cortex_m::asm::dsb();
     compiler_fence(Ordering::SeqCst);
@@ -204,7 +232,7 @@ pub async fn refresh<
     });
 
     screen_driver.set_address_window(0, 0, SCREEN_WIDTH as u16, SCREEN_HEIGHT as u16).unwrap();
-    screen_driver.write_command(Instruction::RAMWR).unwrap();
+    screen_driver.write_command(Instruction::RAMWR, &[]).unwrap();
 
     // let vref: &[u8; 240 * 240 * 2] = unsafe {
     //     &*(video_buf.0 as *const [u8; 240 * 240 * 2])
@@ -215,7 +243,7 @@ pub async fn refresh<
     while spi.sspsr.read().bsy().bit_is_set() {}
 
     screen_driver.signal_data().unwrap();
-    trigger_dma_transfer(dma, 0, &spi, video_buf);
+    trigger_dma_transfer(dma, 0, &spi, video_buf).await;
 }
 
 pub fn init_interrupts(pac: &mut Peripherals) {

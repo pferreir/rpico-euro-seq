@@ -5,8 +5,6 @@
 #![no_main]
 #![no_std]
 
-extern crate panic_halt;
-
 mod encoder;
 mod gate_cv;
 mod midi_in;
@@ -15,6 +13,8 @@ mod screen;
 mod switches;
 mod ui;
 mod util;
+
+use defmt::panic;
 
 use core::{convert::Into, ops::DerefMut};
 
@@ -26,6 +26,7 @@ use cortex_m::{
 use cortex_m_rt::entry;
 use defmt::*;
 use defmt_rtt as _;
+use panic_probe as _;
 
 use embedded_graphics::{pixelcolor::Rgb565, prelude::RgbColor, prelude::*};
 use embedded_hal::spi::MODE_3;
@@ -182,7 +183,7 @@ fn main() -> ! {
         pins.gpio5.into_push_pull_output(),
     );
 
-    let mut program = programs::DebugProgram::new();
+    let mut program = programs::ConverterProgram::new();
 
     encoder::init_encoder(
         pins.gpio21.into_floating_input(),
@@ -210,9 +211,14 @@ fn main() -> ! {
     pin_mut!(main_future);
     let mut cm = Cassette::new(main_future);
 
-    cm.poll_on();
-
-    loop {}
+    loop {
+        match cm.poll_on() {
+            Some(_) => {
+                panic!("This shouldn't happen!");
+            },
+            None => {}
+        }
+    }
 }
 
 fn init_interrupts() {

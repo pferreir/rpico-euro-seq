@@ -92,7 +92,7 @@ pub fn init_midi_in(
                 baudrate: Baud::new(31250),
                 data_bits: DataBits::Eight,
                 stop_bits: StopBits::One,
-                parity: None,
+                parity: None
             },
             periph_frequency,
         )
