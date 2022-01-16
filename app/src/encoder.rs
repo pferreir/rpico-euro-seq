@@ -1,7 +1,14 @@
-use core::{cell::RefCell, marker::PhantomData, ops::DerefMut};
+use core::{
+    cell::RefCell,
+    marker::PhantomData,
+    ops::DerefMut,
+};
 
 use cortex_m::interrupt::{free, CriticalSection, Mutex};
-use heapless::spsc::Queue;
+use defmt::{info};
+use heapless::{
+    spsc::Queue,
+};
 use rotary_encoder_embedded::{Direction, RotaryEncoder};
 use rp2040_hal::{
     gpio::{
@@ -16,7 +23,9 @@ use rp2040_hal::{
     pac::Peripherals,
 };
 
-use crate::{ui::UIInputEvent, util::QueuePoppingIter};
+use crate::{debounce::debounce, ui::UIInputEvent, util::QueuePoppingIter};
+
+const DEBOUNCE_INTERVAL: u32 = 10000;
 
 fn update_turns<const N: usize>(queue: &mut Queue<UIInputEvent, N>, val: i8) {
     match queue.dequeue() {
@@ -128,33 +137,38 @@ pub fn init_interrupts(pac: &mut Peripherals) {
 }
 
 pub fn handle_irq(cs: &CriticalSection, pac: &mut Peripherals) {
-    let reg_r = pac.IO_BANK0.intr[0].read();
+    let reg_s = pac.IO_BANK0.proc0_ints[0].read();
 
-    if reg_r.gpio0_edge_high().bit() {
-        handle_switch_interrupt(cs, false);
+    info!("--- GPIO_IRQ ---");
+
+    if reg_s.gpio0_edge_high().bit() {
         pac.IO_BANK0.intr[0].write(|w| w.gpio0_edge_high().set_bit());
-    }
-    if reg_r.gpio0_edge_low().bit() {
-        handle_switch_interrupt(cs, true);
+        debounce(cs, pac, 0, 0, DEBOUNCE_INTERVAL, |cs, pac| {
+            handle_switch_interrupt(cs, (pac.SIO.gpio_in.read().bits() & 1) == 0);
+        });
+    } else if reg_s.gpio0_edge_low().bit() {
         pac.IO_BANK0.intr[0].write(|w| w.gpio0_edge_low().set_bit());
+        debounce(cs, pac, 0, 0, DEBOUNCE_INTERVAL, |cs, pac| {
+            handle_switch_interrupt(cs, (pac.SIO.gpio_in.read().bits() & 1) == 0);
+        });
     }
 
-    let reg_r = pac.IO_BANK0.intr[2].read();
+    let reg_s = pac.IO_BANK0.proc0_ints[2].read();
 
-    if reg_r.gpio5_edge_high().bit() {
+    if reg_s.gpio5_edge_high().bit() {
         handle_encoder_interrupt(cs);
         pac.IO_BANK0.intr[2].write(|w| w.gpio5_edge_high().set_bit());
     }
-    if reg_r.gpio5_edge_low().bit() {
+    if reg_s.gpio5_edge_low().bit() {
         handle_encoder_interrupt(cs);
         pac.IO_BANK0.intr[2].write(|w| w.gpio5_edge_low().set_bit());
     }
 
-    if reg_r.gpio6_edge_high().bit() {
+    if reg_s.gpio6_edge_high().bit() {
         handle_encoder_interrupt(cs);
         pac.IO_BANK0.intr[2].write(|w| w.gpio6_edge_high().set_bit());
     }
-    if reg_r.gpio6_edge_low().bit() {
+    if reg_s.gpio6_edge_low().bit() {
         handle_encoder_interrupt(cs);
         pac.IO_BANK0.intr[2].write(|w| w.gpio6_edge_low().set_bit());
     }

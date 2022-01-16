@@ -47,8 +47,20 @@ static SEEK_ICON: &[u8] = include_bytes!("../../assets/seek.bmp");
 enum State {
     Stopped,
     Paused(/* at: */ u32),
-    Playing(/* since: */ u32, /* start_pos: */ u32),
-    Recording(/* since: */ u32, /* start_pos: */ u32),
+    Playing(/* since_prog_time: */ u32, /* start_pos: */ u32),
+    Recording(/* since_prog_time: */ u32, /* start_pos: */ u32),
+}
+
+impl State {
+    fn get_time(&self, program_time: u32) -> u32 {
+        match self {
+            State::Stopped => 0,
+            State::Paused(at) => *at,
+            State::Playing(since, start_pos) | State::Recording(since, start_pos) => {
+                start_pos + (program_time - since)
+            }
+        }
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -300,13 +312,7 @@ impl<'t> Program for ConverterProgram<'t> {
         D: DrawTarget<Color = Rgb565>,
         <D as DrawTarget>::Error: Debug,
     {
-        let current_time = match self.state {
-            State::Stopped => 0,
-            State::Paused(at) => at,
-            State::Playing(since, start_pos) | State::Recording(since, start_pos) => {
-                start_pos + (self.program_time - since)
-            }
-        };
+        let current_time = self.state.get_time(self.program_time);
         screen.clear(Rgb565::CSS_DARK_SLATE_BLUE).unwrap();
         draw_timeline(0, self.current_note, screen);
         draw_notes(
@@ -347,7 +353,35 @@ impl<'t> Program for ConverterProgram<'t> {
                 //     new_current_note as i8
                 // }
                 self.selected_action = ((self.selected_action as i8).wrapping_add(*v).rem_euclid(NUM_UI_ACTIONS as i8) as u8).into();
-            }
+            },
+            UIInputEvent::EncoderSwitch(true) => {
+                let current_time = self.state.get_time(self.program_time);
+                self.state = match self.selected_action {
+                    UIAction::PlayPause => {
+                        match self.state {
+                            State::Playing(_, _) => State::Paused(current_time),
+                            State::Stopped | State::Paused(_) | State::Recording(_, _) => State::Playing(self.program_time, current_time),
+                        }
+                    },
+                    UIAction::Stop => {
+                        if let State::Recording(_, _) = self.state {
+                            // TODO: stop recording
+                        }
+                        State::Stopped
+                    },
+                    UIAction::Record => {
+                        // TODO: start recording
+                        State::Recording(self.program_time, current_time)
+                    },
+                    UIAction::Beginning => {
+                        if let State::Recording(_, _) = self.state {
+                            // TODO: stop recording
+                        }
+                        State::Stopped
+                    },
+                    UIAction::Seek => todo!(),
+                }
+            },
             _ => {}
         }
     }

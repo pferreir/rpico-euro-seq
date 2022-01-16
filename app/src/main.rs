@@ -5,6 +5,8 @@
 #![no_main]
 #![no_std]
 
+mod alarms;
+mod debounce;
 mod encoder;
 mod gate_cv;
 mod midi_in;
@@ -16,7 +18,7 @@ mod util;
 
 use defmt::panic;
 
-use core::{convert::Into, ops::DerefMut};
+use core::{cell::RefCell, convert::Into, ops::DerefMut};
 
 use cassette::{pin_mut, Cassette};
 use cortex_m::{
@@ -50,14 +52,13 @@ use screen::{Screen, ScreenDriverWithPins};
 #[used]
 pub static BOOT2_FIRMWARE: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
 
-pub static TIMER: Mutex<Option<Timer>> = Mutex::new(None);
+pub static TIMER: Mutex<RefCell<Option<Timer>>> = Mutex::new(RefCell::new(None));
 
 async fn main_loop(
     program: &mut impl Program,
     scr: &mut Screen,
     mut screen_driver: &mut ScreenDriverWithPins,
     output: &mut gate_cv::GaveCVOutWithPins,
-    timer: &Timer,
     delay: &mut cortex_m::delay::Delay
 ) -> ! {
 
@@ -74,19 +75,31 @@ async fn main_loop(
         free(|cs| {
             if let Some(encoder) = encoder::ROTARY_ENCODER.borrow(cs).borrow_mut().deref_mut() {
                 for msg in encoder.iter_messages() {
-                    program.process_ui_input(&msg)
+                    program.process_ui_input(&msg);
+                    // let mut s = String::<32>::new();
+                    // uwrite!(s, "{:#?}", msg);
+                    // info!("{}", s);
+
                 }
             }
         });
-        free(|cs| {
+        let prog_time = free(|cs| {
             if let Some(switches) = switches::SWITCHES.borrow(cs).borrow_mut().deref_mut() {
                 for msg in switches.iter_messages() {
-                    program.process_ui_input(&msg)
+                    program.process_ui_input(&msg);
+                    // let mut s = String::<32>::new();
+                    // uwrite!(s, "{:#?}", msg);
+                    // info!("{}", s);
                 }
+            }
+
+            if let Some(timer) = TIMER.borrow(cs).borrow().as_ref() {
+                ((timer.get_counter() / 1000) & 0xffffffff) as u32
+            } else {
+                panic!("Can't get TIMER!")
             }
         });
 
-        let prog_time = ((timer.get_counter() / 1000) & 0xffffffff) as u32;
         program.run(prog_time);
 
         scr.clear(Rgb565::BLACK).unwrap();
@@ -112,7 +125,7 @@ fn main() -> ! {
     // set timer to zero
     pac.TIMER.timehw.write(|w| unsafe { w.bits(0) });
     pac.TIMER.timelw.write(|w| unsafe { w.bits(0) });
-    let timer = Timer::new(pac.TIMER, &mut pac.RESETS);
+    let mut timer = Timer::new(pac.TIMER, &mut pac.RESETS);
 
     // External high-speed crystal on the pico board is 12Mhz
     let external_xtal_freq_hz = 12_000_000u32;
@@ -196,7 +209,7 @@ fn main() -> ! {
         pins.gpio3.into_pull_up_input(),
     );
 
-    init_interrupts();
+    init_interrupts(&mut timer);
 
     unsafe {
         // enable edges in GPIO21 and GPIO22
@@ -204,9 +217,15 @@ fn main() -> ! {
         NVIC::unmask(Interrupt::SPI0_IRQ);
         NVIC::unmask(Interrupt::UART0_IRQ);
         NVIC::unmask(Interrupt::DMA_IRQ_0);
+        NVIC::unmask(Interrupt::TIMER_IRQ_0);
     }
 
-    let main_future = main_loop(&mut program, scr, screen_driver, &mut output, &timer, &mut delay);
+    free(|cs| {
+        let mut timer_singleton = TIMER.borrow(cs).borrow_mut();
+        timer_singleton.replace(timer);
+    });
+
+    let main_future = main_loop(&mut program, scr, screen_driver, &mut output, &mut delay);
 
     pin_mut!(main_future);
     let mut cm = Cassette::new(main_future);
@@ -221,8 +240,9 @@ fn main() -> ! {
     }
 }
 
-fn init_interrupts() {
+fn init_interrupts(timer: &mut Timer) {
     let mut pac = unsafe { Peripherals::steal() };
+    alarms::init_interrupts(&mut pac, timer);
     encoder::init_interrupts(&mut pac);
     screen::init_interrupts(&mut pac);
     switches::init_interrupts(&mut pac);
@@ -235,6 +255,14 @@ fn IO_IRQ_BANK0() {
         let mut pac = unsafe { Peripherals::steal() };
         encoder::handle_irq(cs, &mut pac);
         switches::handle_irq(cs, &mut pac);
+    });
+}
+
+#[interrupt]
+fn TIMER_IRQ_0() {
+    free(|cs| {
+        let mut pac = unsafe { Peripherals::steal() };
+        alarms::handle_irq(cs, &mut pac);
     });
 }
 
