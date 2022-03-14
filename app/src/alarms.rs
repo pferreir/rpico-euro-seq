@@ -1,7 +1,7 @@
 use core::cell::RefCell;
 
 use cortex_m::interrupt::{CriticalSection, Mutex, free};
-use defmt::{error, info};
+use defmt::{error, trace};
 use embedded_time::{
     duration::{Extensions}
 };
@@ -120,7 +120,7 @@ pub fn init_interrupts(pac: &mut Peripherals, timer: &mut Timer) {
 }
 
 pub fn handle_irq(cs: &CriticalSection, pac: &mut Peripherals) {
-    info!("--- TIMER_IRQ ---");
+    trace!("--- TIMER_IRQ ---");
 
     let ints = pac.TIMER.ints.read().bits();
 

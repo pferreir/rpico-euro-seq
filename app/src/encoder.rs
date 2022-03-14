@@ -5,7 +5,7 @@ use core::{
 };
 
 use cortex_m::interrupt::{free, CriticalSection, Mutex};
-use defmt::{info};
+use defmt::trace;
 use heapless::{
     spsc::Queue,
 };
@@ -139,7 +139,7 @@ pub fn init_interrupts(pac: &mut Peripherals) {
 pub fn handle_irq(cs: &CriticalSection, pac: &mut Peripherals) {
     let reg_s = pac.IO_BANK0.proc0_ints[0].read();
 
-    info!("--- GPIO_IRQ ---");
+    trace!("--- GPIO_IRQ ---");
 
     if reg_s.gpio0_edge_high().bit() {
         pac.IO_BANK0.intr[0].write(|w| w.gpio0_edge_high().set_bit());

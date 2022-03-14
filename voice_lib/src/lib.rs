@@ -167,7 +167,18 @@ impl<'t, const NUM_VOICES: usize, const SIZE_HISTORY: usize>
         }
     }
 
-    pub fn set(&mut self, n: NotePair, now: u32) {
+    pub fn set_mono(&mut self, voice_no: u8, note: NotePair, now: u32) {
+        assert!(voice_no < NUM_VOICES as u8);
+        let v = self.queue[voice_no as usize].replace(note);
+
+        if v.is_some() {
+            self.history[voice_no as usize].end_note(now);
+        }
+
+        self.history[voice_no as usize].start_note(note, now);
+    }
+
+    pub fn set_poly(&mut self, n: NotePair, now: u32) {
         if let Some((q, h)) = self
             .queue
             .iter_mut()
@@ -193,7 +204,12 @@ impl<'t, const NUM_VOICES: usize, const SIZE_HISTORY: usize>
         }
     }
 
-    pub fn clear(&mut self, n: NotePair, now: u32) {
+    pub fn clear_mono(&mut self, voice_no: u8, now: u32) {
+        self.queue[voice_no as usize].take();
+        self.history[voice_no as usize].end_note(now);
+    }
+
+    pub fn clear_poly(&mut self, n: NotePair, now: u32) {
         let voice = self
             .queue
             .iter_mut()

@@ -1,4 +1,4 @@
-use core::fmt::Debug;
+use core::{convert::TryInto, fmt::Debug};
 
 use defmt::info;
 use embedded_graphics::{
@@ -29,7 +29,7 @@ use super::Program;
 const SCREEN_WIDTH: u32 = crate::screen::SCREEN_WIDTH as u32;
 
 const NUM_VOICES: usize = 2;
-const HISTORY_SIZE: usize = 256;
+const HISTORY_SIZE: usize = 1024;
 const NOTE_HEIGHT: i32 = 4;
 const NUM_VERTICAL_NOTES: i32 = 20;
 const HEIGHT_ROLL: i32 = NOTE_HEIGHT * NUM_VERTICAL_NOTES;
@@ -73,6 +73,12 @@ enum UIAction {
     Seek = 4,
 }
 
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum VoiceConfig {
+    Mono(u8),
+    PolySteal,
+}
+
 const NUM_UI_ACTIONS: usize = 5;
 
 impl UIAction {
@@ -95,7 +101,71 @@ impl From<u8> for UIAction {
             2 => UIAction::Record,
             3 => UIAction::Beginning,
             4 => UIAction::Seek,
-            _ => unreachable!()
+            _ => unreachable!(),
+        }
+    }
+}
+
+struct RecorderBox<'t> {
+    recording_since: Option<u32>,
+    voice_config: VoiceConfig,
+    voice_state: VoiceState<'t, NUM_VOICES, HISTORY_SIZE>,
+}
+
+impl<'t> RecorderBox<'t> {
+    fn new() -> Self {
+        Self {
+            recording_since: None,
+            voice_state: VoiceState::new(),
+            voice_config: VoiceConfig::Mono(0),
+        }
+    }
+
+    fn key_pressed(&mut self, n: NotePair, t: u32) {
+        match self.voice_config {
+            VoiceConfig::PolySteal => self.voice_state.set_poly(n, t),
+            VoiceConfig::Mono(v) => self.voice_state.set_mono(v, n, t),
+        }
+    }
+
+    fn key_released(&mut self, n: NotePair, t: u32) {
+        match self.voice_config {
+            VoiceConfig::PolySteal => self.voice_state.clear_poly(n, t),
+            VoiceConfig::Mono(v) => self.voice_state.clear_mono(v, t),
+        }
+    }
+
+    fn get_voice_state(&self) -> [Option<&NotePair>; NUM_VOICES] {
+        self.voice_state
+            .iter_voices()
+            .map(|x| x.as_ref())
+            .collect::<Vec<Option<&NotePair>, NUM_VOICES>>()
+            .as_slice()
+            .try_into()
+            .unwrap()
+    }
+
+    fn iter_notes_since(&self, t: u32) -> impl Iterator<Item = &(NotePair, u32, Option<u32>)> {
+        self.voice_state.since(t)
+    }
+
+    fn start_recording(&mut self, program_time: u32) {
+        self.recording_since = Some(program_time);
+    }
+
+    fn stop_recording(&mut self, program_time: u32) {
+        self.recording_since = None;
+
+        // Figure which voices to clear
+        let to_clear = self
+            .voice_state
+            .iter_voices()
+            .enumerate()
+            .filter_map(|(n, v)| v.map(|_| n as u8))
+            .collect::<Vec<u8, NUM_VOICES>>();
+
+        for n in to_clear {
+            self.voice_state.clear_mono(n as u8, program_time);
         }
     }
 }
@@ -103,9 +173,9 @@ impl From<u8> for UIAction {
 pub struct ConverterProgram<'t> {
     program_time: u32,
     current_note: i8,
-    voice_state: VoiceState<'t, NUM_VOICES, HISTORY_SIZE>,
-    midi_queue: Queue<MidiMessage, 64>,
 
+    midi_queue: Queue<MidiMessage, 16>,
+    recorder: RecorderBox<'t>,
     state: State,
 
     // UI
@@ -120,7 +190,6 @@ pub struct ConverterProgram<'t> {
     beginning_icon: Bmp<'t, Rgb565>,
     seek_icon: Bmp<'t, Rgb565>,
 }
-
 
 fn draw_notes<'t, D, I: IntoIterator<Item = &'t (NotePair, u32, Option<u32>)>>(
     top: i32,
@@ -287,9 +356,9 @@ impl<'t> Program for ConverterProgram<'t> {
     fn new() -> Self {
         Self {
             current_note: 72, // C5,
-            voice_state: VoiceState::new(),
-            midi_queue: Queue::new(),
 
+            midi_queue: Queue::new(),
+            recorder: RecorderBox::new(),
             program_time: 0,
             state: State::Stopped,
 
@@ -319,28 +388,14 @@ impl<'t> Program for ConverterProgram<'t> {
             0,
             self.current_note,
             current_time.saturating_sub(MS_PER_WIDTH),
-            self.voice_state
-                .since(current_time.saturating_sub(MS_PER_WIDTH)),
+            self.recorder
+                .iter_notes_since(current_time.saturating_sub(MS_PER_WIDTH)),
             screen,
         );
 
         self.draw_buttons(Point::new(10, 100), screen);
 
         let STYLE_CYAN: MonoTextStyle<Rgb565> = MonoTextStyle::new(&FONT_10X20, Rgb565::CYAN);
-
-        for n_voice in 0..NUM_VOICES {
-            let mut txt = String::<16>::new();
-            uwrite!(txt, "V{}: ", n_voice).unwrap();
-            match self.voice_state[n_voice as u8] {
-                Some(np) => {
-                    uwrite!(txt, "{}", np).unwrap();
-                }
-                None => uwrite!(txt, "-").unwrap(),
-            };
-            Text::new(&txt, Point::new(10, 140 + n_voice as i32 * 15), STYLE_CYAN)
-                .draw(screen)
-                .unwrap();
-        }
     }
 
     fn process_ui_input(&mut self, msg: &UIInputEvent) {
@@ -352,36 +407,40 @@ impl<'t> Program for ConverterProgram<'t> {
                 // } else {
                 //     new_current_note as i8
                 // }
-                self.selected_action = ((self.selected_action as i8).wrapping_add(*v).rem_euclid(NUM_UI_ACTIONS as i8) as u8).into();
-            },
+                self.selected_action = ((self.selected_action as i8)
+                    .wrapping_add(*v)
+                    .rem_euclid(NUM_UI_ACTIONS as i8)
+                    as u8)
+                    .into();
+            }
             UIInputEvent::EncoderSwitch(true) => {
                 let current_time = self.state.get_time(self.program_time);
                 self.state = match self.selected_action {
-                    UIAction::PlayPause => {
-                        match self.state {
-                            State::Playing(_, _) => State::Paused(current_time),
-                            State::Stopped | State::Paused(_) | State::Recording(_, _) => State::Playing(self.program_time, current_time),
+                    UIAction::PlayPause => match self.state {
+                        State::Playing(_, _) => State::Paused(current_time),
+                        State::Stopped | State::Paused(_) | State::Recording(_, _) => {
+                            State::Playing(self.program_time, current_time)
                         }
                     },
                     UIAction::Stop => {
                         if let State::Recording(_, _) = self.state {
-                            // TODO: stop recording
+                            self.recorder.stop_recording(self.program_time);
                         }
                         State::Stopped
-                    },
+                    }
                     UIAction::Record => {
-                        // TODO: start recording
+                        self.recorder.start_recording(self.program_time);
                         State::Recording(self.program_time, current_time)
-                    },
+                    }
                     UIAction::Beginning => {
                         if let State::Recording(_, _) = self.state {
-                            // TODO: stop recording
+                            self.recorder.stop_recording(self.program_time);
                         }
                         State::Stopped
-                    },
+                    }
                     UIAction::Seek => todo!(),
                 }
-            },
+            }
             _ => {}
         }
     }
@@ -391,9 +450,9 @@ impl<'t> Program for ConverterProgram<'t> {
     }
 
     fn update_output(&self, output: &mut impl Output) {
-        let voices: Vec<&Option<NotePair>, NUM_VOICES> = self.voice_state.iter_voices().collect();
+        let [v1, v2] = self.recorder.get_voice_state();
 
-        match voices[0] {
+        match v1 {
             Some(n) => {
                 output.set_ch0(n.into());
                 output.set_gate0(true);
@@ -403,7 +462,7 @@ impl<'t> Program for ConverterProgram<'t> {
             }
         }
 
-        match voices[1] {
+        match v2 {
             Some(n) => {
                 output.set_ch1(n.into());
                 output.set_gate1(true);
@@ -419,14 +478,16 @@ impl<'t> Program for ConverterProgram<'t> {
         for msg in QueuePoppingIter::new(&mut self.midi_queue) {
             match msg {
                 MidiMessage::NoteOff(_, n, _) => {
-                    self.voice_state.clear(midi_note_to_lib(n), program_time);
+                    self.recorder
+                        .key_released(midi_note_to_lib(n), program_time);
                 }
                 MidiMessage::NoteOn(_, n, v) => {
                     if v == 0.into() {
                         // equivalent to NoteOff
-                        self.voice_state.clear(midi_note_to_lib(n), program_time);
+                        self.recorder
+                            .key_released(midi_note_to_lib(n), program_time);
                     } else {
-                        self.voice_state.set(midi_note_to_lib(n), program_time);
+                        self.recorder.key_pressed(midi_note_to_lib(n), program_time);
                     }
                 }
                 _ => {}

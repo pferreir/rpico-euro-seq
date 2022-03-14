@@ -11,10 +11,13 @@ use rp2040_hal::{
     pac::Peripherals,
 };
 
-use crate::{ui::UIInputEvent, util::QueuePoppingIter};
+use crate::{debounce::debounce, ui::UIInputEvent, util::QueuePoppingIter};
+
+const DEBOUNCE_INTERVAL: u32 = 10000;
 
 pub static SWITCHES: Mutex<RefCell<Option<Switches<Gpio2, Gpio3>>>> =
     Mutex::new(RefCell::new(None));
+
 pub struct Switches<SW1: PinId + BankPinId, SW2: PinId + BankPinId> {
     sw1: Pin<SW1, PullUpInput>,
     sw2: Pin<SW2, PullUpInput>,
@@ -39,10 +42,10 @@ impl<SW1: PinId + BankPinId, SW2: PinId + BankPinId> Switches<SW1, SW2> {
         let sw2_high = self.sw2.is_high().unwrap();
 
         if self.sw1_last_state != sw1_high {
-            self.event_queue.enqueue(UIInputEvent::Switch1(!self.sw1_last_state)).unwrap();
+            self.event_queue.enqueue(UIInputEvent::Switch1(self.sw1_last_state)).unwrap();
         }
         if self.sw2_last_state != sw2_high {
-            self.event_queue.enqueue(UIInputEvent::Switch2(!self.sw2_last_state)).unwrap();
+            self.event_queue.enqueue(UIInputEvent::Switch2(self.sw2_last_state)).unwrap();
         }
 
         self.sw1_last_state = sw1_high;
@@ -54,7 +57,7 @@ impl<SW1: PinId + BankPinId, SW2: PinId + BankPinId> Switches<SW1, SW2> {
     }
 }
 
-fn handle_switch_interrupt(cs: &CriticalSection) {
+fn handle_switch_interrupt(cs: &CriticalSection, pac: &mut Peripherals) {
     if let Some(ref mut switches) = SWITCHES.borrow(cs).borrow_mut().deref_mut() {
         switches.refresh_switches();
     }
@@ -82,20 +85,16 @@ pub fn handle_irq(cs: &CriticalSection, pac: &mut Peripherals) {
     let reg_r = pac.IO_BANK0.intr[0].read();
 
     if reg_r.gpio2_edge_high().bit() {
-        handle_switch_interrupt(cs);
-        pac.IO_BANK0.intr[0].write(|w| w.gpio2_edge_high().set_bit());
+        debounce(cs, pac, 0, 2, DEBOUNCE_INTERVAL, handle_switch_interrupt);
     }
     if reg_r.gpio2_edge_low().bit() {
-        handle_switch_interrupt(cs);
-        pac.IO_BANK0.intr[0].write(|w| w.gpio2_edge_low().set_bit());
+        debounce(cs, pac, 0, 2, DEBOUNCE_INTERVAL, handle_switch_interrupt);
     }
 
     if reg_r.gpio3_edge_high().bit() {
-        handle_switch_interrupt(cs);
-        pac.IO_BANK0.intr[0].write(|w| w.gpio3_edge_high().set_bit());
+        debounce(cs, pac, 0, 3, DEBOUNCE_INTERVAL, handle_switch_interrupt);
     }
     if reg_r.gpio3_edge_low().bit() {
-        handle_switch_interrupt(cs);
-        pac.IO_BANK0.intr[0].write(|w| w.gpio3_edge_low().set_bit());
+        debounce(cs, pac, 0, 3, DEBOUNCE_INTERVAL, handle_switch_interrupt);
     }
 }

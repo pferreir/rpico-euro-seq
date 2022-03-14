@@ -17,6 +17,8 @@ mod ui;
 mod util;
 
 use defmt::panic;
+// use heapless::String;
+// use ufmt::uwrite;
 
 use core::{cell::RefCell, convert::Into, ops::DerefMut};
 
@@ -211,6 +213,11 @@ fn main() -> ! {
 
     init_interrupts(&mut timer);
 
+    free(|cs| {
+        let mut timer_singleton = TIMER.borrow(cs).borrow_mut();
+        timer_singleton.replace(timer);
+    });
+
     unsafe {
         // enable edges in GPIO21 and GPIO22
         NVIC::unmask(Interrupt::IO_IRQ_BANK0);
@@ -219,11 +226,6 @@ fn main() -> ! {
         NVIC::unmask(Interrupt::DMA_IRQ_0);
         NVIC::unmask(Interrupt::TIMER_IRQ_0);
     }
-
-    free(|cs| {
-        let mut timer_singleton = TIMER.borrow(cs).borrow_mut();
-        timer_singleton.replace(timer);
-    });
 
     let main_future = main_loop(&mut program, scr, screen_driver, &mut output, &mut delay);
 
