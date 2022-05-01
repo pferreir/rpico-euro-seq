@@ -1,5 +1,11 @@
 
 {
-    "rust-analyzer.cargo.target": "thumbv6m-none-eabi",
-    "cortex-debug.variableUseNaturalFormat": true
+    "cortex-debug.variableUseNaturalFormat": true,
+    "rust-analyzer.checkOnSave.enable": true,
+    "rust-analyzer.checkOnSave.allTargets": false,
+    // "rust-analyzer.checkOnSave.overrideCommand": ["cargo", "check", "--message-format=json", "--package=emulator", "--target=wasm32-unknown-unknown"],
+    "rust-analyzer.cargo.target": "wasm32-unknown-unknown",
+    "[rust]": {
+      "editor.defaultFormatter": "matklad.rust-analyzer"
+    }
 }

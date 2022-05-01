@@ -1,0 +1,33 @@
+{
+  "name": "blabla",
+  "version": "0.1.0",
+  "scripts": {
+    "build": "rimraf dist pkg && webpack",
+    "start": "rimraf dist pkg && RUST_LOG=info webpack-dev-server --open -d eval-source-map",
+    "test": "cargo test && wasm-pack test --headless"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.17.9",
+    "@babel/preset-env": "^7.16.11",
+    "@babel/preset-react": "^7.16.7",
+    "@wasm-tool/wasm-pack-plugin": "^1.6.0",
+    "babel-loader": "^8.2.4",
+    "copy-webpack-plugin": "^10.2.4",
+    "eslint": "^8.13.0",
+    "eslint-plugin-react": "^7.29.4",
+    "rimraf": "^3.0.2",
+    "webpack": "^5.72.0",
+    "webpack-cli": "^4.9.2",
+    "webpack-dev-server": "^4.8.1"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^6.1.1",
+    "@fortawesome/free-solid-svg-icons": "^6.1.1",
+    "env": "^0.0.2",
+    "path-browserify": "^1.0.1",
+    "prop-types": "^15.8.1",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "react-piano": "^3.1.3"
+  }
+}

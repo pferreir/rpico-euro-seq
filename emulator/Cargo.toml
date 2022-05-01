@@ -1,0 +1,33 @@
+[package]
+name = "emulator"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+embedded-graphics = "^0.7"
+embedded-graphics-web-simulator = "^0.3"
+wasm-bindgen = { version = "^0.2", features = ["nightly", "serde-serialize"] }
+tinybmp = "^0.3"
+logic = { path = "../logic" }
+lazy_static = "^1.4"
+js-sys = "^0.3"
+midi-types = "^0.1"
+serde = { version = "^1.0", features = ["derive"] }
+wasm_mutex = "0.1.1"
+
+[dependencies.web-sys]
+version = "^0.3"
+features = [
+  'console',
+  'CanvasRenderingContext2d',
+  'Document',
+  'Element',
+  'HtmlCanvasElement',
+  'Performance',
+  'Window',]
+
+[target."cfg(debug_assertions)".dependencies]
+console_error_panic_hook = "^0.1.5"

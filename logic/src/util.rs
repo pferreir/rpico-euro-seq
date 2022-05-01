@@ -43,3 +43,9 @@ impl From<&NotePair> for DACVoltage {
         DACVoltage((1000 * ((semitones.max(0) as u16).saturating_sub(MIDI_NOTE_0V)) / 12) & 0xfff)
     }
 }
+pub trait GateOutput {
+    fn set_ch0(&mut self, val: DACVoltage);
+    fn set_ch1(&mut self, val: DACVoltage);
+    fn set_gate0(&mut self, val: bool);
+    fn set_gate1(&mut self, val: bool);
+}

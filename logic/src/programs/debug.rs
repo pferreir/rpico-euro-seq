@@ -14,7 +14,7 @@ use ufmt::uwrite;
 
 use crate::ui::UIInputEvent;
 
-use super::Program;
+use super::{Program};
 
 extern "C" {
     static _stack_start: u32;
@@ -164,11 +164,12 @@ impl Program for DebugProgram {
             self.frame_counter = 0;
             self.last_tick = program_time;
         }
-        self.frame_counter += 1;
+        self.frame_counter = self.frame_counter.wrapping_add(1);
 
         // stack grows from end of RAM
         // = 0x20000000 + 256k
-        let sp = unsafe { &_stack_start as *const u32 as u32 };
-        self.mem_usage = sp - cortex_m::register::msp::read();
+        // let sp = unsafe { &_stack_start as *const u32 as u32 };
+        // self.mem_usage = sp - cortex_m::register::msp::read();
+        self.mem_usage = 0;
     }
 }

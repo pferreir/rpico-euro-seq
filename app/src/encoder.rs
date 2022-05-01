@@ -1,14 +1,8 @@
-use core::{
-    cell::RefCell,
-    marker::PhantomData,
-    ops::DerefMut,
-};
+use core::{cell::RefCell, marker::PhantomData, ops::DerefMut};
 
 use cortex_m::interrupt::{free, CriticalSection, Mutex};
 use defmt::trace;
-use heapless::{
-    spsc::Queue,
-};
+use heapless::spsc::Queue;
 use rotary_encoder_embedded::{Direction, RotaryEncoder};
 use rp2040_hal::{
     gpio::{
@@ -23,7 +17,8 @@ use rp2040_hal::{
     pac::Peripherals,
 };
 
-use crate::{debounce::debounce, ui::UIInputEvent, util::QueuePoppingIter};
+use crate::debounce::debounce;
+use logic::{ui::UIInputEvent, util::QueuePoppingIter};
 
 const DEBOUNCE_INTERVAL: u32 = 10000;
 

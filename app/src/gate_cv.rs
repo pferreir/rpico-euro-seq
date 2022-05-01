@@ -16,16 +16,9 @@ use rp2040_hal::pac::{RESETS, SPI1};
 use rp2040_hal::spi::{Enabled, SpiDevice};
 use rp2040_hal::Spi;
 
-use crate::util::DACVoltage;
+use logic::util::{DACVoltage, GateOutput};
 
-pub trait Output {
-    fn set_ch0(&mut self, val: DACVoltage);
-    fn set_ch1(&mut self, val: DACVoltage);
-    fn set_gate0(&mut self, val: bool);
-    fn set_gate1(&mut self, val: bool);
-}
-
-pub type GaveCVOutWithPins = GateCVOut<SPI1, Gpio10, Gpio11, Gpio9, Gpio4, Gpio5>;
+pub type GateCVOutWithPins = GateCVOut<SPI1, Gpio10, Gpio11, Gpio9, Gpio4, Gpio5>;
 
 pub struct GateCVOut<
     D: SpiDevice,
@@ -88,7 +81,7 @@ impl<
         CS: PinId + BankPinId,
         G1: PinId + BankPinId,
         G2: PinId + BankPinId,
-    > Output for GateCVOut<D, CLK, MOSI, CS, G1, G2>
+    > GateOutput for GateCVOut<D, CLK, MOSI, CS, G1, G2>
 {
     fn set_ch0(&mut self, val: DACVoltage) {
         let cmd = Command::default();

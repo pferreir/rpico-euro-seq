@@ -1,6 +1,6 @@
 use ufmt::derive::uDebug;
 
-#[derive(uDebug, Debug)]
+#[derive(uDebug, Debug, Clone)]
 pub enum UIInputEvent {
     EncoderTurn(i8),
     EncoderSwitch(bool),

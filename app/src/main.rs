@@ -10,11 +10,8 @@ mod debounce;
 mod encoder;
 mod gate_cv;
 mod midi_in;
-mod programs;
 mod screen;
 mod switches;
-mod ui;
-mod util;
 
 use defmt::panic;
 // use heapless::String;
@@ -46,8 +43,10 @@ use hal::{
     Spi, Timer,
 };
 
-use crate::programs::Program;
-use screen::{Screen, ScreenDriverWithPins};
+use logic::{
+    programs::{self, Program}
+};
+use screen::{ScreenDriverWithPins, Framebuffer};
 
 #[link_section = ".boot2"]
 #[no_mangle]
@@ -56,11 +55,17 @@ pub static BOOT2_FIRMWARE: [u8; 256] = rp2040_boot2::BOOT_LOADER_W25Q080;
 
 pub static TIMER: Mutex<RefCell<Option<Timer>>> = Mutex::new(RefCell::new(None));
 
+#[inline(never)]
+#[no_mangle]
+unsafe fn _log(text: *const str)  {
+    // info!("[APP] {}", text.as_ref().unwrap());
+}
+
 async fn main_loop(
     program: &mut impl Program,
-    scr: &mut Screen,
+    scr: &mut Framebuffer,
     mut screen_driver: &mut ScreenDriverWithPins,
-    output: &mut gate_cv::GaveCVOutWithPins,
+    output: &mut gate_cv::GateCVOutWithPins,
     delay: &mut cortex_m::delay::Delay
 ) -> ! {
 
@@ -173,7 +178,7 @@ fn main() -> ! {
         pins.gpio15.into_push_pull_output(),
     );
 
-    let (scr, screen_driver) = singleton!(: (Screen, ScreenDriverWithPins) = screen::init_screen(
+    let (scr, screen_driver) = singleton!(: (Framebuffer, ScreenDriverWithPins) = screen::init_screen(
         spi,
         &mut delay,
         screen_pins
@@ -198,7 +203,7 @@ fn main() -> ! {
         pins.gpio5.into_push_pull_output(),
     );
 
-    let mut program = programs::ConverterProgram::new();
+    let mut program = programs::SequencerProgram::new();
 
     encoder::init_encoder(
         pins.gpio21.into_floating_input(),

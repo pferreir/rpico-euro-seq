@@ -11,7 +11,8 @@ use rp2040_hal::{
     pac::Peripherals,
 };
 
-use crate::{debounce::debounce, ui::UIInputEvent, util::QueuePoppingIter};
+use crate::{debounce::debounce};
+use logic::{ui::UIInputEvent, util::QueuePoppingIter};
 
 const DEBOUNCE_INTERVAL: u32 = 10000;
 

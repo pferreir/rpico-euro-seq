@@ -1,22 +1,24 @@
+mod framebuffer;
 mod st7735;
 
-use core::{cell::RefCell, convert::Infallible, future::Future, marker::PhantomData, sync::atomic::{compiler_fence, Ordering}, task::Poll};
+use core::{
+    cell::RefCell,
+    future::Future,
+    sync::atomic::{compiler_fence, Ordering},
+    task::Poll,
+};
 
 use cortex_m::{
     delay::Delay,
     interrupt::{free, CriticalSection, Mutex},
 };
-use defmt::info;
 use embedded_graphics::{
     draw_target::DrawTarget,
-    pixelcolor::{
-        raw::{RawU16},
-        Rgb565,
-    },
-    prelude::{OriginDimensions, Point, RawData, RgbColor, Size},
-    primitives::Rectangle,
-    Pixel,
+    pixelcolor::Rgb565,
+    prelude::*,
 };
+pub use framebuffer::Framebuffer;
+use logic::screen::{SCREEN_WIDTH, SCREEN_HEIGHT};
 use rp2040_hal::{
     gpio::{
         pin::{
@@ -25,37 +27,33 @@ use rp2040_hal::{
         },
         Output, Pin, PushPull,
     },
-    pac::{Peripherals, SPI0, self},
+    pac::{self, Peripherals, SPI0},
     spi::{Enabled, SpiDevice},
     Spi,
 };
 
-use st7735::{ST7735, Instruction};
+use st7735::{Instruction, ST7735};
 
 pub type ScreenDriverWithPins = ST7735<
     Spi<Enabled, SPI0, 8>,
     Pin<Gpio13, Output<PushPull>>,
-    Pin<Gpio14, Output<PushPull>>, Pin<Gpio15, Output<PushPull>>
+    Pin<Gpio14, Output<PushPull>>,
+    Pin<Gpio15, Output<PushPull>>,
 >;
 
 pub const SPI_DEVICE_READY: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(true));
 pub const DMA_READY: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(true));
 
-pub const SCREEN_WIDTH: usize = 160;
-pub const SCREEN_HEIGHT: usize = 128;
-const DISPLAY_AREA: Rectangle = Rectangle::new(
-    Point::zero(),
-    Size::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32),
-);
-
-
 pub struct PollFuture<F: Fn() -> bool> {
-    f: F
+    f: F,
 }
 impl<F: Fn() -> bool> Future for PollFuture<F> {
     type Output = ();
 
-    fn poll(self: core::pin::Pin<&mut Self>, _cx: &mut core::task::Context<'_>) -> Poll<Self::Output> {
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        _cx: &mut core::task::Context<'_>,
+    ) -> Poll<Self::Output> {
         if (self.f)() {
             Poll::Ready(())
         } else {
@@ -66,61 +64,7 @@ impl<F: Fn() -> bool> Future for PollFuture<F> {
 
 impl<F: Fn() -> bool> PollFuture<F> {
     pub fn new(f: F) -> Self {
-        Self {
-            f
-        }
-    }
-}
-
-
-pub struct Screen {
-    pub video_buffer: [u8; SCREEN_WIDTH * SCREEN_HEIGHT * 2],
-}
-impl Screen {
-    pub fn new() -> Self {
-        Self {
-            video_buffer: [0u8; SCREEN_HEIGHT * SCREEN_WIDTH * 2],
-        }
-    }
-
-    pub fn draw_pixel(&mut self, point: Point, color: Rgb565) {
-        if !DISPLAY_AREA.contains(point) {
-            return;
-        }
-        let i = (point.x + point.y * SCREEN_WIDTH as i32) * 2;
-        let color: RawU16 = color.into();
-        self.video_buffer[i as usize] = (color.into_inner() >> 8) as u8;
-        self.video_buffer[i as usize + 1] = (color.into_inner() & 0xff) as u8;
-    }
-
-    pub unsafe fn buffer_addr(&self) -> (u32, u32) {
-        let ptr = self as *const _ as *const u8;
-        (ptr as u32, self.video_buffer.len() as u32)
-    }
-}
-
-impl DrawTarget for Screen {
-    type Color = Rgb565;
-
-    type Error = st7735::Error<Infallible>;
-
-    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
-    where
-        I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>>,
-    {
-        for pixel in pixels.into_iter() {
-            let Pixel(point, color) = pixel;
-
-            self.draw_pixel(point, color);
-        }
-
-        Ok(())
-    }
-}
-
-impl OriginDimensions for Screen {
-    fn size(&self) -> Size {
-        Size::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32)
+        Self { f }
     }
 }
 
@@ -134,17 +78,21 @@ pub fn init_screen<'t>(
         Pin<Gpio13, Output<PushPull>>,
         Pin<Gpio15, Output<PushPull>>,
     ),
-) -> (
-    Screen,
-    ScreenDriverWithPins,
-) {
-    let mut driver = ST7735::new(spi, dc, Some(rst), cs, SCREEN_WIDTH as u16, SCREEN_HEIGHT as u16);
+) -> (Framebuffer, ScreenDriverWithPins) {
+    let mut driver = ST7735::new(
+        spi,
+        dc,
+        Some(rst),
+        cs,
+        SCREEN_WIDTH as u16,
+        SCREEN_HEIGHT as u16,
+    );
     driver.init(delay).unwrap();
     driver
         .set_orientation(&st7735::Orientation::Landscape)
         .unwrap();
 
-    let mut screen = Screen::new();
+    let mut screen = Framebuffer::new();
     screen.clear(Rgb565::BLACK).unwrap();
     (screen, driver)
 }
@@ -176,11 +124,11 @@ fn config_dma<D: SpiDevice>(ch: &pac::dma::CH, src_buf: u32, len: u32, spi: &D) 
 }
 
 #[inline(never)]
-pub async fn trigger_dma_transfer<SPI: SpiDevice> (
+pub async fn trigger_dma_transfer<SPI: SpiDevice>(
     dma: &pac::DMA,
     chan_no: usize,
     spi: &SPI,
-    (ptr, len): (u32, u32)
+    (ptr, len): (u32, u32),
 ) {
     free(|cs| {
         let singleton = DMA_READY;
@@ -208,7 +156,7 @@ pub async fn trigger_dma_transfer<SPI: SpiDevice> (
     }
 
     // while dma.ch[chan_no].ch_al1_ctrl.read().busy().bit_is_set() {}
-    
+
     // TODO: get rid of this
     PollFuture::new(|| !dma.ch[chan_no].ch_al1_ctrl.read().busy().bit_is_set()).await;
 
@@ -216,14 +164,12 @@ pub async fn trigger_dma_transfer<SPI: SpiDevice> (
     compiler_fence(Ordering::SeqCst);
 }
 
-pub async fn refresh<
-    SPI: SpiDevice
->(
+pub async fn refresh<SPI: SpiDevice>(
     dma: &pac::DMA,
     spi: SPI,
     video_buf: (u32, u32),
     screen_driver: &mut ScreenDriverWithPins,
-    delay: &mut cortex_m::delay::Delay
+    delay: &mut cortex_m::delay::Delay,
 ) {
     free(|cs| {
         let singleton = SPI_DEVICE_READY;
@@ -231,8 +177,12 @@ pub async fn refresh<
         *ready = false;
     });
 
-    screen_driver.set_address_window(0, 0, SCREEN_WIDTH as u16, SCREEN_HEIGHT as u16).unwrap();
-    screen_driver.write_command(Instruction::RAMWR, &[]).unwrap();
+    screen_driver
+        .set_address_window(0, 0, SCREEN_WIDTH as u16, SCREEN_HEIGHT as u16)
+        .unwrap();
+    screen_driver
+        .write_command(Instruction::RAMWR, &[])
+        .unwrap();
 
     // let vref: &[u8; 240 * 240 * 2] = unsafe {
     //     &*(video_buf.0 as *const [u8; 240 * 240 * 2])
@@ -270,8 +220,6 @@ pub fn handle_dma_irq(cs: &CriticalSection, pac: &mut Peripherals) {
         *ready = true;
 
         // acknowledge
-        pac.DMA
-            .ints0
-            .modify(|_, w| unsafe { w.ints0().bits(0x1) })
+        pac.DMA.ints0.modify(|_, w| unsafe { w.ints0().bits(0x1) })
     }
 }

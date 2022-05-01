@@ -1,0 +1,63 @@
+body {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    flex-direction: column;
+    color: white;
+    font-family: "Raleway Dots", cursive;
+}
+
+canvas {
+    padding: 0;
+    margin: auto;
+    border-style: solid;
+    border-color: #605e63;
+    border-width: 2px;
+    border-top-width: 20px;
+    margin-bottom: 20px;
+}
+
+body {
+    background-color: #171414;
+}
+
+header {
+    margin-bottom: 20px;
+    font-size: 40px;
+
+    width: 100%;
+    text-align: center;
+}
+
+div#screen {
+    display: flex;
+}
+
+div#action-bar {
+    display: flex;
+    flex-direction: column;
+}
+
+div#action-bar > * {
+    display: flex;
+    justify-content: center;
+}
+
+footer {
+    display: block;
+    position: fixed;
+    bottom: 10px;
+    left: 10px;
+}
+
+a {
+    color: gainsboro;
+}
+
+.button {
+    display: inline-block;
+    padding: 10px;
+    border: 1px solid #ff0000;
+    cursor: pointer;
+    user-select: none;
+}

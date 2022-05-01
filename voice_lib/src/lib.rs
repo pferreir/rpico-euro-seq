@@ -1,25 +1,9 @@
 #![no_std]
 
-use core::mem;
-use core::ptr;
-use core::{marker::PhantomData, ops::Index};
-
-use heapless::{String, Vec};
+use heapless::String;
 use ufmt::{derive::uDebug, uDisplay, uWrite, uwrite, Formatter};
 
-macro_rules! make_array {
-    ($n:expr, $constructor:expr) => {{
-        unsafe {
-            let mut items: [_; $n] = mem::MaybeUninit::uninit().assume_init();
-            for (i, place) in items.iter_mut().enumerate() {
-                ptr::write(place, $constructor(i));
-            }
-            items
-        }
-    }};
-}
-
-#[derive(Copy, Clone, Debug, uDebug, PartialEq)]
+#[derive(Copy, Clone, Debug, uDebug, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u8)]
 pub enum Note {
     C = 0,
@@ -35,6 +19,27 @@ pub enum Note {
     Bb = 10,
     B = 11,
 }
+
+#[derive(Copy, Clone, Debug, uDebug)]
+#[repr(u8)]
+pub enum NoteFlag {
+    None = 0,
+    Note = 1,
+    Legato = 2
+}
+
+impl Into<NoteFlag> for u8 {
+    fn into(self) -> NoteFlag {
+        match self {
+            0 => NoteFlag::None,
+            1 => NoteFlag::Note,
+            2 => NoteFlag::Legato,
+            _ => unreachable!()
+        }
+    }
+}
+
+
 
 impl uDisplay for Note {
     fn fmt<W>(&self, fmt: &mut Formatter<'_, W>) -> Result<(), W::Error>
@@ -67,7 +72,7 @@ impl Note {
     }
 }
 
-#[derive(uDebug, Debug, PartialEq, Clone, Copy)]
+#[derive(uDebug, Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
 pub struct NotePair(pub Note, pub i8);
 
 impl uDisplay for NotePair {
@@ -113,133 +118,86 @@ impl Into<i8> for &NotePair {
     }
 }
 
-type VoiceLine = (NotePair, u32, Option<u32>);
-
 #[derive(Debug)]
-pub struct VoiceHistory<const N: usize> {
-    content: Vec<VoiceLine, N>,
+pub struct VoiceTrack<const N: usize, const M: usize> {
+    notes: [i8; N],
+    flags: [u8; M]
 }
 
-impl<const N: usize> VoiceHistory<N> {
+const fn create_array<const N: usize>() -> [i8; N] {
+    let mut array = [0; N];
+    array[0] = 72;
+    array[1] = 73;
+    array[2] = 71;
+    array[3] = 75;
+    array[4] = 76;
+    array[5] = 78;
+    array
+}
+
+impl<const N: usize, const M: usize> VoiceTrack<N, M> {
     pub fn new() -> Self {
+        if N != (M * 4) {
+            panic!("N should be equal to 4 times M");
+        }
         Self {
-            content: Vec::<VoiceLine, N>::new(),
+            notes: create_array(),
+            flags: [0u8; M]
         }
     }
 
-    pub fn start_note(&mut self, n: NotePair, t: u32) {
-        self.content.push((n, t, None)).unwrap();
+    pub fn set_note<F: Fn(Option<(NotePair, NoteFlag)>) -> (NotePair, NoteFlag)>(&mut self, beat: usize, f: F) {
+        let (note, flag) = f(self.get_note(beat));
+        self.notes[beat] = (&note).into();
+        let idx = beat / 4;
+        let sub_idx = beat % 4;
+        let bit_mask = 0xc0 >> (sub_idx * 2);
+        self.flags[idx] = (self.flags[idx] & !bit_mask) | ((flag as u8) << (7 - sub_idx * 2));
     }
 
-    pub fn end_note(&mut self, t: u32) {
-        let last = self.content.pop();
-        assert!(last.is_some());
-        let (n, start, end) = last.unwrap();
-        assert!(end.is_none());
-        self.content.push((n, start, Some(t))).unwrap();
+    pub fn get_note(&self, t: usize) -> Option<(NotePair, NoteFlag)> {
+        let idx = t / 4;
+        let sub_idx = t % 4;
+        let flags = (self.flags[idx] & (0xc0 >> (sub_idx * 2))) >> (7 - sub_idx * 2);
+        match flags.into() {
+            NoteFlag::None => None,
+            _ => Some((self.notes[t].into(), flags.into()))
+        }
+
     }
 
-    pub fn last(&self) -> Option<&VoiceLine> {
-        self.content.last()
-    }
-
-    pub fn since(&self, t: u32) -> impl Iterator<Item = &(NotePair, u32, Option<u32>)> {
-        self.content
+    pub fn since<'t>(&'t self, t: usize, num: usize) -> impl Iterator<Item = (usize, NotePair, NoteFlag)> + 't {
+        self.notes[t..(t + num)]
             .iter()
-            .filter(move |entry| entry.1 >= t || entry.2.unwrap_or(0) >= t)
+            .enumerate()
+            .map(move |(n, e)| {
+                let idx = (t + n) / 4;
+                let sub_idx = (t + n) % 4;
+                let flags = (self.flags[idx] & (0xc0 >> (sub_idx * 2))) >> (7 - sub_idx * 2);
+                (t + n, (*e).into(), flags.into())
+            })
     }
 }
 
-pub struct VoiceState<'t, const NUM_VOICES: usize, const SIZE_HISTORY: usize> {
-    queue: [Option<NotePair>; NUM_VOICES],
-    history: [VoiceHistory<SIZE_HISTORY>; NUM_VOICES],
-    _t: &'t PhantomData<()>,
+pub enum NoteState {
+    On(NotePair),
+    Off,
+    Legato(NotePair)
 }
 
-impl<'t, const NUM_VOICES: usize, const SIZE_HISTORY: usize>
-    VoiceState<'t, NUM_VOICES, SIZE_HISTORY>
-{
-    pub fn new() -> Self {
-        Self {
-            queue: make_array!(NUM_VOICES, |_| None),
-            history: make_array!(NUM_VOICES, |_| VoiceHistory::new()),
-            _t: &PhantomData,
+impl From<&NoteState> for (Option<NotePair>, NoteFlag) {
+    fn from(state: &NoteState) -> Self {
+        match state {
+            NoteState::On(n) => {
+                (Some(*n), NoteFlag::Note)
+            },
+            NoteState::Off => {
+                (None, NoteFlag::None)
+            },
+            NoteState::Legato(n) => {
+                (Some(*n), NoteFlag::Legato)
+            }
         }
-    }
-
-    pub fn set_mono(&mut self, voice_no: u8, note: NotePair, now: u32) {
-        assert!(voice_no < NUM_VOICES as u8);
-        let v = self.queue[voice_no as usize].replace(note);
-
-        if v.is_some() {
-            self.history[voice_no as usize].end_note(now);
-        }
-
-        self.history[voice_no as usize].start_note(note, now);
-    }
-
-    pub fn set_poly(&mut self, n: NotePair, now: u32) {
-        if let Some((q, h)) = self
-            .queue
-            .iter_mut()
-            .zip(self.history.iter_mut())
-            .find(|(q, _)| q.is_none())
-        {
-            *q = Some(n);
-            h.start_note(n, now);
-        } else {
-            // find voice which started the earliest
-            let (q, h) = self
-                .queue
-                .iter_mut()
-                .zip(self.history.iter_mut())
-                .min_by_key(|(_, h)| h.last().unwrap().1)
-                .unwrap();
-            assert!(q.is_some());
-            q.replace(n);
-
-            // replace earliest voice
-            h.end_note(now);
-            h.start_note(n, now);
-        }
-    }
-
-    pub fn clear_mono(&mut self, voice_no: u8, now: u32) {
-        self.queue[voice_no as usize].take();
-        self.history[voice_no as usize].end_note(now);
-    }
-
-    pub fn clear_poly(&mut self, n: NotePair, now: u32) {
-        let voice = self
-            .queue
-            .iter_mut()
-            .zip(self.history.iter_mut())
-            .find(|(v, _)| if let Some(np) = v { *np == n } else { false });
-        if let Some((q, h)) = voice {
-            *q = None;
-            h.end_note(now);
-        }
-        // otherwise, this is a "zombie voice" which will die silently
-    }
-
-    pub fn since(&self, t: u32) -> impl Iterator<Item = &(NotePair, u32, Option<u32>)> {
-        self.history.iter().flat_map(move |h| h.since(t))
-    }
-
-    pub fn iter_voices(&self) -> impl Iterator<Item = &Option<NotePair>> {
-        self.queue.iter()
-    }
-}
-
-impl<'t, const NUM_VOICES: usize, const SIZE_HISTORY: usize> Index<u8>
-    for VoiceState<'t, NUM_VOICES, SIZE_HISTORY>
-where
-    Self: 't,
-{
-    type Output = Option<NotePair>;
-
-    fn index(&self, index: u8) -> &Self::Output {
-        &self.queue[index as usize]
     }
 }
 
@@ -247,7 +205,7 @@ where
 mod tests {
     use heapless::String;
 
-    use super::{Note, NotePair, VoiceHistory, VoiceState};
+    use super::{Note, NotePair, VoiceTrack, VoiceState};
     use ufmt::uwrite;
 
     #[test]
@@ -267,7 +225,7 @@ mod tests {
 
     #[test]
     fn test_voice_history() {
-        let mut h = VoiceHistory::<10>::new();
+        let mut h = VoiceTrack::<10>::new();
         h.start_note(NotePair(Note::D, 2), 10);
 
         assert!(h.content.last() == Some(&(NotePair(Note::D, 2), 10, None)));

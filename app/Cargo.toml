@@ -12,7 +12,7 @@ panic-probe = { version = "^0.3", features = ["print-defmt"] }
 
 cortex-m = "0.7.2"
 cortex-m-rt = "0.7"
-rp2040-hal = { path = "../../../../3rd/rp-hal/rp2040-hal", features = ["eh1_0_alpha", "rt"] }
+rp2040-hal = { path = "../../rp-hal/rp2040-hal", features = ["eh1_0_alpha", "rt"] }
 embedded-hal = { version = "0.2.5", features = ["unproven"] }
 rp2040-boot2 = "0.2.0"
 embedded-time = "0.12.0"
@@ -22,9 +22,10 @@ nb = "1.0.0"
 ufmt = "0.1.0"
 heapless = { version = "0.7.3", features = ["ufmt-impl"] }
 mcp49xx = "0.2.0"
-rotary-encoder-embedded = "0.0.4"
-embedded-dma = "0.1.2"
+rotary-encoder-embedded = "^0.1"
+embedded-dma = "^0.2"
 voice_lib = { path = "../voice_lib" }
 cassette = "0.2.3"
 tinybmp = "0.3.1"
 
+logic = { path = "../logic" }

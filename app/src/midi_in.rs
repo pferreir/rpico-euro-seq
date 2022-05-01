@@ -17,7 +17,7 @@ use rp2040_hal::{
 };
 use ufmt::derive::uDebug;
 
-use crate::util::QueuePoppingIter;
+use logic::util::QueuePoppingIter;
 
 pub static MIDI_IN: Mutex<RefCell<Option<MidiIn<UART0, Gpio1>>>> = Mutex::new(RefCell::new(None));
 
