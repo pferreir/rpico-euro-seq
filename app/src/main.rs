@@ -43,9 +43,7 @@ use hal::{
     Spi, Timer,
 };
 
-use logic::{
-    programs::{self, Program}
-};
+use logic::{LogLevel, programs::{self, Program}};
 use screen::{ScreenDriverWithPins, Framebuffer};
 
 #[link_section = ".boot2"]
@@ -57,8 +55,16 @@ pub static TIMER: Mutex<RefCell<Option<Timer>>> = Mutex::new(RefCell::new(None))
 
 #[inline(never)]
 #[no_mangle]
-unsafe fn _log(text: *const str)  {
-    // info!("[APP] {}", text.as_ref().unwrap());
+unsafe fn _log(text: *const str, level: LogLevel)  {
+    let text = text.as_ref().unwrap();
+    match level {
+        LogLevel::Debug => debug!("[APP] {}", text),
+        LogLevel::Info => info!("[APP] {}", text),
+        LogLevel::Warning => warn!("[APP] {}", text),
+        LogLevel::Error => error!("[APP] {}", text),
+    }
+
+
 }
 
 async fn main_loop(

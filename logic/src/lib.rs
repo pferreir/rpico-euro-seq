@@ -6,12 +6,33 @@ pub mod ui;
 pub mod util;
 pub mod screen;
 
+pub enum LogLevel {
+    Debug,
+    Info,
+    Warning,
+    Error,
+}
+
 pub mod log {
+    use super::LogLevel;
+
     extern "Rust" {
-        fn _log(text: *const str);
+        fn _log(text: *const str, level: LogLevel);
     }
 
     pub fn info(text: &str) {
-        unsafe { _log(text as *const str) };
+        unsafe { _log(text as *const str, LogLevel::Info) };
+    }
+
+    pub fn debug(text: &str) {
+        unsafe { _log(text as *const str, LogLevel::Debug) };
+    }
+
+    pub fn warning(text: &str) {
+        unsafe { _log(text as *const str, LogLevel::Warning) };
+    }
+
+    pub fn error(text: &str) {
+        unsafe { _log(text as *const str, LogLevel::Error) };
     }
 }

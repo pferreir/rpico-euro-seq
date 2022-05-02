@@ -2,48 +2,47 @@
 extern crate lazy_static;
 
 use core::str;
-use std::{
-    cell::RefCell,
-    rc::Rc,
-    borrow::Borrow,
-};
+use std::{borrow::Borrow, cell::RefCell, rc::Rc};
 
 use embedded_graphics_web_simulator::{
     display::WebSimulatorDisplay, output_settings::OutputSettingsBuilder,
 };
-use midi_types::{MidiMessage};
+use logic::LogLevel;
+use midi_types::MidiMessage;
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::{prelude::*, JsCast};
-use web_sys::{Window};
 use web_sys::console;
-use serde::{Serialize, Deserialize};
+use web_sys::Window;
 
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::*};
 use logic::{
-    programs::{SequencerProgram, Program},
+    programs::{Program, SequencerProgram},
     screen::{SCREEN_HEIGHT, SCREEN_WIDTH},
     ui::UIInputEvent,
 };
 
-
 #[inline(never)]
 #[no_mangle]
-unsafe fn _log(text: *const str)  {
-    console::info_1(&text.as_ref().unwrap().into());
+unsafe fn _log(text: *const str, level: LogLevel) {
+    let text = text.as_ref().unwrap();
+    match level {
+        LogLevel::Debug => console::debug_1(&text.into()),
+        LogLevel::Info => console::info_1(&text.into()),
+        LogLevel::Warning => console::warn_1(&text.into()),
+        LogLevel::Error => console::error_1(&text.into()),
+    }
 }
 struct MidiMsgWrapper(MidiMessage);
 
 impl<'t> Deserialize<'t> for MidiMsgWrapper {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'t> {
+        D: serde::Deserializer<'t>,
+    {
         let (on, c, k, v) = <(bool, u8, u8, u8)>::deserialize(deserializer).unwrap();
         Ok(MidiMsgWrapper(match on {
-            true => {
-                MidiMessage::NoteOn(c.into(), k.into(), v.into())
-            },
-            false => {
-                MidiMessage::NoteOff(c.into(), k.into(), v.into())
-            }
+            true => MidiMessage::NoteOn(c.into(), k.into(), v.into()),
+            false => MidiMessage::NoteOff(c.into(), k.into(), v.into()),
         }))
     }
 }
@@ -51,17 +50,18 @@ impl<'t> Deserialize<'t> for MidiMsgWrapper {
 impl Serialize for MidiMsgWrapper {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         let msg = self.0.clone();
         match msg {
             MidiMessage::NoteOn(c, n, v) => {
                 let t: (bool, u8, u8, u8) = (true, c.into(), n.into(), v.into());
                 t.serialize(serializer)
-            },
+            }
             MidiMessage::NoteOff(c, n, v) => {
                 let t: (bool, u8, u8, u8) = (false, c.into(), n.into(), v.into());
                 t.serialize(serializer)
-            },
+            }
             _ => {
                 unimplemented!()
             }
@@ -70,7 +70,6 @@ impl Serialize for MidiMsgWrapper {
 }
 
 #[global]
-
 // When the `wee_alloc` feature is enabled, this uses `wee_alloc` as the global
 // allocator.
 //
@@ -99,7 +98,6 @@ fn loop_func<P: Program + 'static>(
     window: Window,
     mut display: WebSimulatorDisplay<Rgb565>,
 ) {
-
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
 
@@ -173,7 +171,6 @@ pub fn midi_new_message(message: &JsValue) {
         q.borrow_mut().push(msg);
     })
 }
-
 
 // This is like the `main` function, except for JavaScript.
 #[wasm_bindgen(start)]
