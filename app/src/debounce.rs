@@ -1,15 +1,20 @@
 use core::cell::RefCell;
 
-use cortex_m::{interrupt::{CriticalSection, Mutex}};
+use cortex_m::interrupt::{CriticalSection, Mutex};
 use defmt::{error, trace};
 use rp2040_hal::pac::Peripherals;
 
-use crate::alarms::{AlarmArgs, fire_alarm};
+use crate::alarms::{fire_alarm, AlarmArgs};
 
 static DEBOUNCE_CALLBACKS: Mutex<RefCell<[Option<fn(&CriticalSection, &mut Peripherals)>; 4]>> =
     Mutex::new(RefCell::new([None; 4]));
 
-pub fn debounce_callback(cs: &CriticalSection, pac: &mut Peripherals, args: AlarmArgs, alarm_id: u8) {
+pub fn debounce_callback(
+    cs: &CriticalSection,
+    pac: &mut Peripherals,
+    args: AlarmArgs,
+    alarm_id: u8,
+) {
     if let AlarmArgs::U8U8(num_slice, num_pin) = args {
         // clear any pending ISRs
         pac.IO_BANK0.intr[num_slice as usize].modify(|r, w| {
@@ -34,13 +39,19 @@ pub fn debounce_callback(cs: &CriticalSection, pac: &mut Peripherals, args: Alar
         } else {
             error!("Callback should have been registered!");
         }
-
     } else {
         panic!("Unexpected callback args")
     }
 }
 
-pub fn debounce(cs: &CriticalSection, pac: &mut Peripherals, num_slice: u8, num_pin: u8, time: u32, callback: fn(&CriticalSection, &mut Peripherals)) {
+pub fn debounce(
+    cs: &CriticalSection,
+    pac: &mut Peripherals,
+    num_slice: u8,
+    num_pin: u8,
+    time: u32,
+    callback: fn(&CriticalSection, &mut Peripherals),
+) {
     // disable interrupt
     pac.IO_BANK0.proc0_inte[num_slice as usize].modify(|r, w| {
         let v = r.bits();

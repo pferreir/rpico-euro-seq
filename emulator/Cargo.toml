@@ -12,11 +12,11 @@ embedded-graphics-web-simulator = "^0.3"
 wasm-bindgen = { version = "^0.2", features = ["nightly", "serde-serialize"] }
 tinybmp = "^0.3"
 logic = { path = "../logic" }
-lazy_static = "^1.4"
+voice_lib = { path = "../voice_lib" }
 js-sys = "^0.3"
 midi-types = "^0.1"
 serde = { version = "^1.0", features = ["derive"] }
-wasm_mutex = "0.1.1"
+wee_alloc = "^0.4"
 
 [dependencies.web-sys]
 version = "^0.3"
@@ -27,7 +27,14 @@ features = [
   'Element',
   'HtmlCanvasElement',
   'Performance',
-  'Window',]
+  'Window',
+  'AudioContext',
+  'AudioDestinationNode',
+  'OscillatorNode',
+  'OscillatorType',
+  'AudioParam',
+  'AudioNode',
+  'GainNode']
 
 [target."cfg(debug_assertions)".dependencies]
 console_error_panic_hook = "^0.1.5"

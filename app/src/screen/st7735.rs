@@ -2,7 +2,6 @@ use embedded_hal::blocking::delay::DelayMs;
 use embedded_hal::blocking::spi::{Write, WriteIter};
 use embedded_hal::digital::v2::OutputPin;
 
-
 #[derive(Debug, Clone, Copy)]
 pub enum Instruction {
     NOP = 0x00,
@@ -174,10 +173,15 @@ where
         (self.dc, self.rst, self.cs)
     }
 
-    pub fn write_command(&mut self, command: Instruction, params: &[u8]) -> Result<(), Error<PinE>> {
+    pub fn write_command(
+        &mut self,
+        command: Instruction,
+        params: &[u8],
+    ) -> Result<(), Error<PinE>> {
         self.cs.set_low().map_err(Error::Pin)?;
         self.dc.set_low().map_err(Error::Pin)?;
-        self.spi.write(&[command as u8])
+        self.spi
+            .write(&[command as u8])
             .map_err(|_| Error::DisplayError)?;
 
         if !params.is_empty() {

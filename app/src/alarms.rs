@@ -1,12 +1,14 @@
 use core::cell::RefCell;
 
-use cortex_m::interrupt::{CriticalSection, Mutex, free};
+use cortex_m::interrupt::{free, CriticalSection, Mutex};
 use defmt::{error, trace};
-use embedded_time::{
-    duration::{Extensions}
-};
+use embedded_time::duration::Extensions;
 
-use rp2040_hal::{Timer, pac::Peripherals, timer::{Alarm0, Alarm1, Alarm2, Alarm3}};
+use rp2040_hal::{
+    pac::Peripherals,
+    timer::{Alarm0, Alarm1, Alarm2, Alarm3},
+    Timer,
+};
 
 use crate::TIMER;
 
@@ -53,7 +55,6 @@ enum AlarmWrapper {
     Alarm3(Alarm3),
 }
 
-
 macro_rules! fire_alarm {
     ($timer: ident, $alarm: expr, $time: expr) => {{
         $alarm.schedule($time.microseconds()).unwrap();
@@ -83,7 +84,10 @@ impl AlarmWrapper {
 
 struct AlarmSlot {
     alarm: AlarmWrapper,
-    value: Option<(fn(&CriticalSection, &mut Peripherals, AlarmArgs, u8), AlarmArgs)>,
+    value: Option<(
+        fn(&CriticalSection, &mut Peripherals, AlarmArgs, u8),
+        AlarmArgs,
+    )>,
 }
 
 impl AlarmSlot {
@@ -98,7 +102,12 @@ impl AlarmSlot {
         self.value.is_none()
     }
 
-    fn free(&mut self) -> (fn(&CriticalSection, &mut Peripherals, AlarmArgs, u8), AlarmArgs) {
+    fn free(
+        &mut self,
+    ) -> (
+        fn(&CriticalSection, &mut Peripherals, AlarmArgs, u8),
+        AlarmArgs,
+    ) {
         self.value.take().unwrap()
     }
 

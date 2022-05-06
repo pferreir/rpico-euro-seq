@@ -25,7 +25,7 @@ use crate::{
     util::{midi_note_to_lib, GateOutput, QueuePoppingIter},
 };
 use ufmt::uwrite;
-use voice_lib::{NoteFlag, NotePair, NoteState, VoiceTrack};
+use voice_lib::{NoteFlag, NotePair, VoiceTrack};
 
 use super::{Program};
 
@@ -168,7 +168,7 @@ impl<'t> MonoRecorderBox<'t> {
 }
 
 pub struct SequencerProgram<'t> {
-    current_note: i8,
+    current_note: u8,
     program_time: u32,
     prev_program_time: Option<u32>,
 
@@ -190,7 +190,7 @@ pub struct SequencerProgram<'t> {
     seek_icon: Bmp<'t, Rgb565>,
 }
 
-fn draw_timeline<D>(top: i32, from: i8, screen: &mut D)
+fn draw_timeline<D>(top: i32, from: u8, screen: &mut D)
 where
     D: DrawTarget<Color = Rgb565>,
     <D as DrawTarget>::Error: Debug,
@@ -238,7 +238,7 @@ where
         .draw(screen)
         .unwrap();
 
-        let NotePair(note, _) = (from + i as i8).into();
+        let NotePair(note, _) = (from + i as u8).into();
         if !note.is_black_key() {
             Rectangle::new(
                 Point::new(1, top + (NUM_VERTICAL_NOTES - 1 - i) * NOTE_HEIGHT),
@@ -308,7 +308,7 @@ impl<'t> SequencerProgram<'t> {
     fn draw_notes<D, I: IntoIterator<Item = (usize, NotePair, NoteFlag)>>(
         &self,
         top: i32,
-        from_note: i8,
+        from_note: u8,
         start_time: i32,
         slots: I,
         screen: &mut D,
@@ -316,14 +316,14 @@ impl<'t> SequencerProgram<'t> {
         D: DrawTarget<Color = Rgb565>,
         <D as DrawTarget>::Error: Debug,
     {
-        let to_note = from_note.saturating_add(NUM_VERTICAL_NOTES as i8);
+        let to_note = from_note.saturating_add(NUM_VERTICAL_NOTES as u8);
 
         let note_style = PrimitiveStyleBuilder::new()
             .fill_color(Rgb565::BLUE)
             .build();
 
         for (beat, note, flag) in slots.into_iter() {
-            let note: i8 = (&note).into();
+            let note: u8 = (&note).into();
             if (note < from_note) || (note > to_note) {
                 continue;
             }
@@ -437,29 +437,19 @@ impl<'t> Program for SequencerProgram<'t> {
         self.midi_queue.enqueue(msg.clone()).unwrap();
     }
 
-    fn update_output(&self, output: &mut impl GateOutput) {
-        // let [v1, v2] = self.recorder.get_voice_state();
-
-        // match v1 {
-        //     Some(n) => {
-        //         output.set_ch0(n.into());
-        //         output.set_gate0(true);
-        //     }
-        //     None => {
-        //         output.set_gate0(false);
-        //     }
-        // }
-
+    fn update_output<'u, 'v, T: From<&'u NotePair>>(&'v self, output: &mut impl GateOutput<'u, T>) where
+        'v: 'u
+    {
         // TODO: polyphonic
-        // match v2 {
-        //     Some(n) => {
-        //         output.set_ch1(n.into());
-        //         output.set_gate1(true);
-        //     }
-        //     None => {
-        //         output.set_gate1(false);
-        //     }
-        // }
+        match self.recorder.current_note.last() {
+            None => {
+                output.set_gate0(false);
+            },
+            Some(np) => {
+                output.set_gate0(true);
+                output.set_ch0(np.into());
+            }
+        }
     }
 
     fn run(&mut self, program_time: u32) {

@@ -14,13 +14,14 @@ export default function ActionBar({ onEncoderLeft, onEncoderRight, onEncoderPres
   return (
     <>
       <div>
-        <span onClick={() => console.log(onEncoderLeft())}><i className="button fa-solid fa-angle-left" id="button-left"></i></span>
+        <span onClick={onEncoderLeft}><i className="button fa-solid fa-angle-left" id="button-left"></i></span>
         <span onMouseDown={() => onEncoderPress(true)} onMouseUp={() => onEncoderPress(false)}><i className="button fa-solid fa-circle-dot" id="button-center"></i></span>
         <span onClick={onEncoderRight}><i className="button fa-solid fa-angle-right" id="button-right"></i></span>
       </div>
       <Piano
         noteRange={{ first: firstNote, last: lastNote }}
         playNote={midiNumber => {
+          console.log(midiNumber);
           onKeyPress(true, midiNumber);
         }}
         stopNote={midiNumber => {

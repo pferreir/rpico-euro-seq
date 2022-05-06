@@ -7,6 +7,7 @@ mod debug;
 
 pub use sequencer::SequencerProgram;
 pub use debug::DebugProgram;
+use voice_lib::NotePair;
 
 use crate::{ui::UIInputEvent, util::GateOutput};
 
@@ -19,6 +20,7 @@ pub trait Program {
     where
         D: DrawTarget<Color = Rgb565>,
         <D as DrawTarget>::Error: Debug;
-    fn update_output(&self, output: &mut impl GateOutput) {}
+    fn update_output<'u, 'v, T: From<&'u NotePair>>(&'v self, output: &mut impl GateOutput<'u, T>) where
+    'v: 'u {}
     fn run(&mut self, program_time: u32);
 }

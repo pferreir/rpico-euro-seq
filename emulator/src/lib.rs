@@ -1,25 +1,36 @@
-#[macro_use]
-extern crate lazy_static;
-
 use core::str;
 use std::{borrow::Borrow, cell::RefCell, rc::Rc};
 
 use embedded_graphics_web_simulator::{
     display::WebSimulatorDisplay, output_settings::OutputSettingsBuilder,
 };
-use logic::LogLevel;
+use logic::log;
 use midi_types::MidiMessage;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{prelude::*, JsCast};
+use web_sys::AudioContext;
+use web_sys::OscillatorNode;
 use web_sys::console;
 use web_sys::Window;
+use web_sys::{OscillatorType, GainNode};
 
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::*};
+use logic::LogLevel;
+use logic::util::GateOutput;
 use logic::{
     programs::{Program, SequencerProgram},
     screen::{SCREEN_HEIGHT, SCREEN_WIDTH},
     ui::UIInputEvent,
 };
+use voice_lib::NotePair;
+
+#[global_allocator]
+static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+
+thread_local! {
+    static INPUT_QUEUE: RefCell<Vec<UIInputEvent>> = RefCell::new(Vec::new());
+    static MIDI_QUEUE: RefCell<Vec<MidiMessage>> = RefCell::new(Vec::new());
+}
 
 #[inline(never)]
 #[no_mangle]
@@ -69,18 +80,57 @@ impl Serialize for MidiMsgWrapper {
     }
 }
 
-#[global]
-// When the `wee_alloc` feature is enabled, this uses `wee_alloc` as the global
-// allocator.
-//
-// If you don't want to use `wee_alloc`, you can safely delete this.
-#[cfg(feature = "wee_alloc")]
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
+struct BrowserOutput {
+    osc0: OscillatorNode,
+    vol0: GainNode,
+    state0: bool,
+}
 
-thread_local! {
-    static INPUT_QUEUE: RefCell<Vec<UIInputEvent>> = RefCell::new(Vec::new());
-    static MIDI_QUEUE: RefCell<Vec<MidiMessage>> = RefCell::new(Vec::new());
+struct Frequency(f32);
+
+impl From<&NotePair> for Frequency {
+    fn from(np: &NotePair) -> Self {
+        let n: u8 = np.into();
+        Self(440.0 * 2f32.powf((n as f32 - 69.0) / 12.0))
+    }
+}
+
+impl<'t> GateOutput<'t, Frequency> for BrowserOutput {
+    fn set_ch0(&mut self, val: Frequency) {
+        log::info("SET FREQ");
+        self.osc0.frequency().set_value(val.0);
+    }
+
+    fn set_ch1(&mut self, val: Frequency) {
+        todo!()
+    }
+
+    fn set_gate0(&mut self, val: bool) {
+        log::info("SET GATE");
+        if val {
+            self.vol0.gain().set_value(1.0);
+        } else {
+            self.vol0.gain().set_value(0.0);
+        }
+        self.state0 = val;
+    }
+
+    fn set_gate1(&mut self, val: bool) {
+        todo!()
+    }
+}
+
+impl BrowserOutput {
+    fn new() -> Self {
+        let ac = AudioContext::new().unwrap();
+        let osc0 = ac.create_oscillator().unwrap();
+        osc0.set_type(OscillatorType::Sawtooth);
+        let vol0 = GainNode::new(&ac).unwrap();
+        osc0.connect_with_audio_node(&vol0).unwrap();
+        vol0.connect_with_audio_node(&ac.destination()).unwrap();
+        osc0.start().unwrap();
+        Self { osc0, vol0, state0: false }
+    }
 }
 
 fn window() -> web_sys::Window {
@@ -95,6 +145,7 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
 
 fn loop_func<P: Program + 'static>(
     mut program: P,
+    mut output: BrowserOutput,
     window: Window,
     mut display: WebSimulatorDisplay<Rgb565>,
 ) {
@@ -133,6 +184,7 @@ fn loop_func<P: Program + 'static>(
         display.clear(Rgb565::BLACK).unwrap();
         program.render_screen(&mut display);
         display.flush().expect("could not flush buffer");
+        program.update_output(&mut output);
 
         let b: &Rc<RefCell<Option<Closure<dyn FnMut()>>>> = f.borrow();
         // Schedule ourself for another requestAnimationFrame callback.
@@ -175,8 +227,6 @@ pub fn midi_new_message(message: &JsValue) {
 // This is like the `main` function, except for JavaScript.
 #[wasm_bindgen(start)]
 pub fn main_js() -> Result<(), JsValue> {
-    // This provides better error messages in debug mode.
-    // It's disabled in release mode so it doesn't bloat up the file size.
     console_error_panic_hook::set_once();
 
     let program = SequencerProgram::new();
@@ -195,7 +245,9 @@ pub fn main_js() -> Result<(), JsValue> {
         document.get_element_by_id("screen").as_ref(),
     );
 
-    loop_func(program, window, display);
+    let output = BrowserOutput::new();
+
+    loop_func(program, output, window, display);
 
     Ok(())
 }

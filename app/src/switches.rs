@@ -11,7 +11,7 @@ use rp2040_hal::{
     pac::Peripherals,
 };
 
-use crate::{debounce::debounce};
+use crate::debounce::debounce;
 use logic::{ui::UIInputEvent, util::QueuePoppingIter};
 
 const DEBOUNCE_INTERVAL: u32 = 10000;
@@ -43,17 +43,21 @@ impl<SW1: PinId + BankPinId, SW2: PinId + BankPinId> Switches<SW1, SW2> {
         let sw2_high = self.sw2.is_high().unwrap();
 
         if self.sw1_last_state != sw1_high {
-            self.event_queue.enqueue(UIInputEvent::Switch1(self.sw1_last_state)).unwrap();
+            self.event_queue
+                .enqueue(UIInputEvent::Switch1(self.sw1_last_state))
+                .unwrap();
         }
         if self.sw2_last_state != sw2_high {
-            self.event_queue.enqueue(UIInputEvent::Switch2(self.sw2_last_state)).unwrap();
+            self.event_queue
+                .enqueue(UIInputEvent::Switch2(self.sw2_last_state))
+                .unwrap();
         }
 
         self.sw1_last_state = sw1_high;
         self.sw2_last_state = sw2_high;
     }
 
-    pub fn iter_messages<'t>(&'t mut self) -> impl Iterator<Item=UIInputEvent> + 't {
+    pub fn iter_messages<'t>(&'t mut self) -> impl Iterator<Item = UIInputEvent> + 't {
         QueuePoppingIter::new(&mut self.event_queue)
     }
 }

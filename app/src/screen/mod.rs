@@ -12,13 +12,9 @@ use cortex_m::{
     delay::Delay,
     interrupt::{free, CriticalSection, Mutex},
 };
-use embedded_graphics::{
-    draw_target::DrawTarget,
-    pixelcolor::Rgb565,
-    prelude::*,
-};
+use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::*};
 pub use framebuffer::Framebuffer;
-use logic::screen::{SCREEN_WIDTH, SCREEN_HEIGHT};
+use logic::screen::{SCREEN_HEIGHT, SCREEN_WIDTH};
 use rp2040_hal::{
     gpio::{
         pin::{

@@ -86,8 +86,8 @@ impl uDisplay for NotePair {
     }
 }
 
-pub fn midi_to_note(midi: i8) -> NotePair {
-    let note = match (midi - 12) % 12 {
+pub fn midi_to_note(midi: u8) -> NotePair {
+    let note = match (midi as i8 - 12) % 12 {
         0 => Note::C,
         1 => Note::Db,
         2 => Note::D,
@@ -105,26 +105,26 @@ pub fn midi_to_note(midi: i8) -> NotePair {
     NotePair(note, (midi as i8 - 12) / 12)
 }
 
-impl Into<NotePair> for i8 {
+impl Into<NotePair> for u8 {
     fn into(self) -> NotePair {
         midi_to_note(self)
     }
 }
 
-impl Into<i8> for &NotePair {
-    fn into(self) -> i8 {
+impl Into<u8> for &NotePair {
+    fn into(self) -> u8 {
         let NotePair(n, o) = self;
-        (*n as u8 & 0x7f) as i8 + (o + 1) * 12
+        (*n as u8 & 0x7f) + (o + 1) as u8 * 12
     }
 }
 
 #[derive(Debug)]
 pub struct VoiceTrack<const N: usize, const M: usize> {
-    notes: [i8; N],
+    notes: [u8; N],
     flags: [u8; M]
 }
 
-const fn create_array<const N: usize>() -> [i8; N] {
+const fn create_array<const N: usize>() -> [u8; N] {
     let mut array = [0; N];
     array[0] = 72;
     array[1] = 73;

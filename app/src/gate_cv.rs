@@ -6,8 +6,8 @@ use embedded_time::rate::Extensions;
 use mcp49xx::interface::SpiInterface;
 use mcp49xx::marker::{DualChannel, Resolution12Bit, Unbuffered};
 use mcp49xx::{Channel, Command, Mcp49xx};
+use rp2040_hal::gpio::bank0::{Gpio10, Gpio11, Gpio4, Gpio5, Gpio9};
 use rp2040_hal::gpio::PushPullOutput;
-use rp2040_hal::gpio::bank0::{Gpio4, Gpio5, Gpio9, Gpio10, Gpio11};
 use rp2040_hal::gpio::{
     pin::{bank0::BankPinId, FunctionSpi},
     Pin, PinId,
@@ -75,13 +75,14 @@ impl<
 }
 
 impl<
+        't,
         D: SpiDevice,
         CLK: PinId + BankPinId,
         MOSI: PinId + BankPinId,
         CS: PinId + BankPinId,
         G1: PinId + BankPinId,
         G2: PinId + BankPinId,
-    > GateOutput for GateCVOut<D, CLK, MOSI, CS, G1, G2>
+    > GateOutput<'t, DACVoltage> for GateCVOut<D, CLK, MOSI, CS, G1, G2>
 {
     fn set_ch0(&mut self, val: DACVoltage) {
         let cmd = Command::default();

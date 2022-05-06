@@ -1,7 +1,11 @@
 use core::convert::Infallible;
 
-use embedded_graphics::{prelude::*, primitives::Rectangle, pixelcolor::{Rgb565, raw::RawU16}};
-use logic::screen::{SCREEN_WIDTH, SCREEN_HEIGHT};
+use embedded_graphics::{
+    pixelcolor::{raw::RawU16, Rgb565},
+    prelude::*,
+    primitives::Rectangle,
+};
+use logic::screen::{SCREEN_HEIGHT, SCREEN_WIDTH};
 
 const DISPLAY_AREA: Rectangle = Rectangle::new(
     Point::zero(),

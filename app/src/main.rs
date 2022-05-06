@@ -43,8 +43,11 @@ use hal::{
     Spi, Timer,
 };
 
-use logic::{LogLevel, programs::{self, Program}};
-use screen::{ScreenDriverWithPins, Framebuffer};
+use logic::{
+    programs::{self, Program},
+    LogLevel,
+};
+use screen::{Framebuffer, ScreenDriverWithPins};
 
 #[link_section = ".boot2"]
 #[no_mangle]
@@ -55,7 +58,7 @@ pub static TIMER: Mutex<RefCell<Option<Timer>>> = Mutex::new(RefCell::new(None))
 
 #[inline(never)]
 #[no_mangle]
-unsafe fn _log(text: *const str, level: LogLevel)  {
+unsafe fn _log(text: *const str, level: LogLevel) {
     let text = text.as_ref().unwrap();
     match level {
         LogLevel::Debug => debug!("[APP] {}", text),
@@ -63,8 +66,6 @@ unsafe fn _log(text: *const str, level: LogLevel)  {
         LogLevel::Warning => warn!("[APP] {}", text),
         LogLevel::Error => error!("[APP] {}", text),
     }
-
-
 }
 
 async fn main_loop(
@@ -72,9 +73,8 @@ async fn main_loop(
     scr: &mut Framebuffer,
     mut screen_driver: &mut ScreenDriverWithPins,
     output: &mut gate_cv::GateCVOutWithPins,
-    delay: &mut cortex_m::delay::Delay
+    delay: &mut cortex_m::delay::Delay,
 ) -> ! {
-
     let buffer_addr = unsafe { scr.buffer_addr() };
 
     loop {
@@ -92,7 +92,6 @@ async fn main_loop(
                     // let mut s = String::<32>::new();
                     // uwrite!(s, "{:#?}", msg);
                     // info!("{}", s);
-
                 }
             }
         });
@@ -155,9 +154,7 @@ fn main() -> ! {
     .unwrap();
 
     // bring up DMA
-    pac.RESETS.reset.modify(|_, w| {
-        w.dma().clear_bit()
-    });
+    pac.RESETS.reset.modify(|_, w| w.dma().clear_bit());
     while pac.RESETS.reset_done.read().dma().bit_is_clear() {}
 
     let mut delay = cortex_m::delay::Delay::new(core.SYST, clocks.system_clock.freq().integer());
@@ -184,11 +181,13 @@ fn main() -> ! {
         pins.gpio15.into_push_pull_output(),
     );
 
-    let (scr, screen_driver) = singleton!(: (Framebuffer, ScreenDriverWithPins) = screen::init_screen(
-        spi,
-        &mut delay,
-        screen_pins
-    )).unwrap();
+    let (scr, screen_driver) =
+        singleton!(: (Framebuffer, ScreenDriverWithPins) = screen::init_screen(
+            spi,
+            &mut delay,
+            screen_pins
+        ))
+        .unwrap();
 
     midi_in::init_midi_in(
         &mut pac.RESETS,
@@ -247,7 +246,7 @@ fn main() -> ! {
         match cm.poll_on() {
             Some(_) => {
                 panic!("This shouldn't happen!");
-            },
+            }
             None => {}
         }
     }
