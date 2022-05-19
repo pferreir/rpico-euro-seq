@@ -1,0 +1,58 @@
+on: [push]
+
+name: build
+
+jobs:
+  embed:
+    name: Embedded app
+    runs-on: ubuntu-latest
+    defaults:
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: nightly
+            target: thumbv6m-none-eabi
+            override: true
+      - name: Run cargo build
+        uses: marcopolo/cargo@master
+        with:
+          working-directory: ./app
+          command: install
+          args: flip-link
+      - name: Run cargo build
+        uses: marcopolo/cargo@master
+        with:
+          working-directory: ./app
+          command: build
+          args: --release
+      - uses: actions/upload-artifact@master
+        with:
+          name: rp2040-bin
+          path: target/thumbv6m-none-eabi/release/midi-embedded
+  emulator:
+    name: Emulator
+    runs-on: ubuntu-latest
+    defaults:
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+            toolchain: nightly
+            target: wasm32-unknown-unknown
+            override: true
+      - name: Run WASM build
+        working-directory: ./emulator
+        run: npm i && npm run build
+      - uses: actions/download-artifact@v2
+        with:
+          name: rp2040-bin
+          path: ./emulator/dist/embedded.bin
+      - name: Deploy 🚀
+        uses: JamesIves/github-pages-deploy-action@v4.3.3
+        with:
+          branch: gh-pages
+          folder: ./emulator/dist
+
