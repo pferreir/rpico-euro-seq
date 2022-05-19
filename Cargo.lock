@@ -281,9 +281,9 @@ dependencies = [
 
 [[package]]
 name = "embedded-hal"
-version = "1.0.0-alpha.6"
+version = "1.0.0-alpha.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "570e765da7319a256dfe1542f14501a53f74e020b68aa666a98b1ad31a614c7e"
+checksum = "93cc714edeae73aa1ff259af4498595360b2992e0e9c59801873ed198a7f2216"
 dependencies = [
  "nb 1.0.0",
 ]
@@ -611,9 +611,9 @@ checksum = "0c520e05135d6e763148b6426a837e239041653ba7becd2e538c076c738025fc"
 
 [[package]]
 name = "pio"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "593b4978951e32f8dd5b76203503a9dd8dc4665e4bcb4f7fe8e03e33b9f7abc0"
+checksum = "0fd642eada42517e6589cd7f5e830630324aec628fb4aa719000f8801e40c0a2"
 dependencies = [
  "arrayvec",
  "num_enum",
@@ -734,11 +734,13 @@ dependencies = [
 [[package]]
 name = "rp2040-hal"
 version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4bca865e0a5a0aba04992ede50d7585f3dba13863943445b5ad1c81270e112e"
 dependencies = [
  "cortex-m",
  "critical-section",
  "embedded-hal 0.2.7",
- "embedded-hal 1.0.0-alpha.6",
+ "embedded-hal 1.0.0-alpha.7",
  "embedded-time",
  "itertools",
  "nb 1.0.0",
@@ -753,9 +755,9 @@ dependencies = [
 
 [[package]]
 name = "rp2040-pac"
-version = "0.2.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db04fc92670038074acf20ad422130b735897937812a1761b17cfc26d56c253f"
+checksum = "13a6106d5db01c7171a39c1f7696780912db9b42fe7ac722db60069c8904ea7c"
 dependencies = [
  "cortex-m",
  "cortex-m-rt",

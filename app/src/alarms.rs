@@ -56,19 +56,19 @@ enum AlarmWrapper {
 }
 
 macro_rules! fire_alarm {
-    ($timer: ident, $alarm: expr, $time: expr) => {{
+    ($alarm: expr, $time: expr) => {{
         $alarm.schedule($time.microseconds()).unwrap();
-        $alarm.enable_interrupt($timer);
+        $alarm.enable_interrupt();
     }};
 }
 
 impl AlarmWrapper {
     fn fire(&mut self, timer: &mut Timer, time: u32) {
         match self {
-            AlarmWrapper::Alarm0(a) => fire_alarm!(timer, a, time),
-            AlarmWrapper::Alarm1(a) => fire_alarm!(timer, a, time),
-            AlarmWrapper::Alarm2(a) => fire_alarm!(timer, a, time),
-            AlarmWrapper::Alarm3(a) => fire_alarm!(timer, a, time),
+            AlarmWrapper::Alarm0(a) => fire_alarm!(a, time),
+            AlarmWrapper::Alarm1(a) => fire_alarm!(a, time),
+            AlarmWrapper::Alarm2(a) => fire_alarm!(a, time),
+            AlarmWrapper::Alarm3(a) => fire_alarm!(a, time),
         }
     }
 

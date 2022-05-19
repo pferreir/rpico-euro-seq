@@ -6,7 +6,6 @@ jobs:
   embed:
     name: Embedded app
     runs-on: ubuntu-latest
-    defaults:
     steps:
       - uses: actions/checkout@v2
       - name: Install latest nightly
@@ -15,7 +14,7 @@ jobs:
             toolchain: nightly
             target: thumbv6m-none-eabi
             override: true
-      - name: Run cargo build
+      - name: Install flip-link
         uses: marcopolo/cargo@master
         with:
           working-directory: ./app
@@ -34,7 +33,7 @@ jobs:
   emulator:
     name: Emulator
     runs-on: ubuntu-latest
-    defaults:
+    needs: embed
     steps:
       - uses: actions/checkout@v2
       - name: Install latest nightly
@@ -49,7 +48,7 @@ jobs:
       - uses: actions/download-artifact@v2
         with:
           name: rp2040-bin
-          path: ./emulator/dist/embedded.bin
+          path: ./emulator/dist/embedded
       - name: Deploy 🚀
         uses: JamesIves/github-pages-deploy-action@v4.3.3
         with:

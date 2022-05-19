@@ -86,14 +86,12 @@ pub fn init_midi_in(
     rx: Pin<Gpio1, FunctionUart>,
     periph_frequency: Hertz,
 ) {
+    let mut config = UartConfig::default();
+    config.baudrate = Baud::new(312500);
+
     let uart = UartPeripheral::new(device, ((), rx), resets)
         .enable(
-            UartConfig {
-                baudrate: Baud::new(31250),
-                data_bits: DataBits::Eight,
-                stop_bits: StopBits::One,
-                parity: None,
-            },
+            config,
             periph_frequency,
         )
         .unwrap();
