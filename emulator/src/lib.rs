@@ -97,7 +97,6 @@ impl From<&NotePair> for Frequency {
 
 impl<'t> GateOutput<'t, Frequency> for BrowserOutput {
     fn set_ch0(&mut self, val: Frequency) {
-        log::info("SET FREQ");
         self.osc0.frequency().set_value(val.0);
     }
 
@@ -106,7 +105,6 @@ impl<'t> GateOutput<'t, Frequency> for BrowserOutput {
     }
 
     fn set_gate0(&mut self, val: bool) {
-        log::info("SET GATE");
         if val {
             self.vol0.gain().set_value(1.0);
         } else {
