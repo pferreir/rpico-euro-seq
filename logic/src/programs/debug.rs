@@ -1,4 +1,4 @@
-use core::fmt::Debug;
+use core::{fmt::Debug, future::Future};
 use embedded_graphics::{
     draw_target::DrawTarget,
     mono_font::{ascii::FONT_10X20, MonoTextStyle},
@@ -9,18 +9,20 @@ use embedded_graphics::{
     Drawable,
 };
 use embedded_midi::MidiMessage;
+use embedded_sdmmc::{TimeSource, BlockDevice};
 use heapless::{spsc::Queue, String};
 use ufmt::uwrite;
 
-use crate::ui::UIInputEvent;
+use crate::{stdlib::FileSystem, ui::UIInputEvent};
 
-use super::{Program};
+use super::{Program, ProgramError};
 
 extern "C" {
     static _stack_start: u32;
 }
 
-pub struct DebugProgram {
+pub struct DebugProgram<B: BlockDevice, TS: TimeSource> {
+    fs: FileSystem<B, TS>,
     messages: Queue<MidiMessage, 5>,
     fps: u8,
     encoder_pos: i8,
@@ -32,9 +34,12 @@ pub struct DebugProgram {
     frame_counter: u8,
 }
 
-impl Program for DebugProgram {
-    fn new() -> Self {
+impl<B: BlockDevice, TS: TimeSource> Program<B, TS> for DebugProgram<B, TS> {
+    type SetupFuture<'a> = impl Future<Output = Result<(), ProgramError<B>>> + 'a where Self: 'a;
+
+    fn new(fs: FileSystem<B, TS>) -> Self {
         Self {
+            fs,
             messages: Queue::new(),
             mem_usage: 0,
             fps: 0,
@@ -82,7 +87,7 @@ impl Program for DebugProgram {
             .draw(screen)
             .unwrap();
 
-            Circle::new(Point::new(60, 30), 20)
+        Circle::new(Point::new(60, 30), 20)
             .into_styled(if self.sw2_state {
                 STYLE_FILLED
             } else {
@@ -155,6 +160,10 @@ impl Program for DebugProgram {
                 self.sw2_state = *v;
             }
         }
+    }
+
+    fn setup<'a>(&'a mut self) -> Self::SetupFuture<'a> {
+        async { Ok(()) }
     }
 
     fn run(&mut self, program_time: u32) {

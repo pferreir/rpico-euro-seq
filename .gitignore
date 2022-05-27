@@ -1,6 +1,6 @@
+.DS_Store
 /target
 /.vscode/.*.json
 node_modules
 emulator/pkg
 emulator/dist
-

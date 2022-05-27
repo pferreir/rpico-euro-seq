@@ -1,22 +1,30 @@
+#![feature(generic_associated_types)]
+#![feature(type_alias_impl_trait)]
+
 use core::str;
+use std::future::Future;
 use std::{borrow::Borrow, cell::RefCell, rc::Rc};
 
 use embedded_graphics_web_simulator::{
     display::WebSimulatorDisplay, output_settings::OutputSettingsBuilder,
 };
-use logic::log;
+use embedded_sdmmc::TimeSource;
+use embedded_sdmmc::{Block, BlockCount, BlockDevice, BlockIdx, Controller, Timestamp};
+use js_sys::{Date, Uint8Array};
+use logic::stdlib::FileSystem;
 use midi_types::MidiMessage;
 use serde::{Deserialize, Serialize};
+use ufmt::{uDebug, uWrite};
 use wasm_bindgen::{prelude::*, JsCast};
-use web_sys::AudioContext;
 use web_sys::OscillatorNode;
-use web_sys::console;
 use web_sys::Window;
-use web_sys::{OscillatorType, GainNode};
+use web_sys::{console, RequestMode};
+use web_sys::{AudioContext, Request};
+use web_sys::{GainNode, OscillatorType, RequestInit};
 
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::*};
-use logic::LogLevel;
 use logic::util::GateOutput;
+use logic::{log, LogLevel};
 use logic::{
     programs::{Program, SequencerProgram},
     screen::{SCREEN_HEIGHT, SCREEN_WIDTH},
@@ -127,7 +135,108 @@ impl BrowserOutput {
         osc0.connect_with_audio_node(&vol0).unwrap();
         vol0.connect_with_audio_node(&ac.destination()).unwrap();
         osc0.start().unwrap();
-        Self { osc0, vol0, state0: false }
+        Self {
+            osc0,
+            vol0,
+            state0: false,
+        }
+    }
+}
+
+#[derive(Debug)]
+enum LocalStorageDeviceError {
+    OutOfRange,
+    JS(JsValue),
+}
+
+impl uDebug for LocalStorageDeviceError {
+    fn fmt<W>(&self, formatter: &mut ufmt::Formatter<W>) -> Result<(), W::Error>
+    where
+        W: uWrite + ?Sized,
+    {
+        let text = match self {
+            LocalStorageDeviceError::OutOfRange => "Request out of range".to_owned(),
+            LocalStorageDeviceError::JS(e) => format!("JS error: {:?}", e),
+        };
+        formatter.write_str(&text)?;
+        Ok(())
+    }
+}
+
+const LOCAL_STORAGE_SIZE: usize = 10 * 1024 * 1024;
+
+#[derive(Debug)]
+struct LocalStorageDevice;
+
+#[wasm_bindgen(module = "/js/disk.js")]
+extern "C" {
+    #[wasm_bindgen(catch)]
+    async fn readFromDisk(start: u32, end: u32) -> Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch)]
+    async fn writeToDisk(start_idx: u32, data: Uint8Array) -> Result<JsValue, JsValue>;
+}
+
+impl BlockDevice for LocalStorageDevice {
+    type Error = LocalStorageDeviceError;
+    type ReadFuture<'b> = impl Future<Output = Result<(), Self::Error>> + 'b;
+    type WriteFuture<'b> = impl Future<Output = Result<(), Self::Error>> + 'b;
+
+    fn read<'a>(
+        &'a mut self,
+        blocks: &'a mut [Block],
+        BlockIdx(start_block_idx): BlockIdx,
+        reason: &str,
+    ) -> Self::ReadFuture<'a> {
+        let start = start_block_idx * 512;
+        let end = start_block_idx * 512 + blocks.len() as u32 * 512;
+
+        async move {
+            let val: Uint8Array = readFromDisk(start, end).await.unwrap().into();
+
+            for (n, b) in blocks.iter_mut().enumerate() {
+                let arr = val.subarray(n as u32 * Block::LEN_U32, (n as u32 + 1) * Block::LEN_U32);
+                let mut block = Block::new();
+                arr.copy_to(&mut block.contents);
+                *b = block;
+            }
+            Ok(())
+        }
+    }
+
+    fn write<'a>(
+        &'a mut self,
+        blocks: &'a [Block],
+        BlockIdx(start_block_idx): BlockIdx,
+    ) -> Self::WriteFuture<'a> {
+        async move {
+            let arr = Uint8Array::new_with_length(blocks.len() as u32 * 512);
+            for (n, block) in blocks.iter().enumerate() {
+                arr.subarray((n as u32) * 512, (n as u32 + 1) * 512)
+                    .copy_from(&block.contents)
+            }
+            writeToDisk(start_block_idx * 512, arr).await.unwrap();
+            Ok(())
+        }
+    }
+
+    fn num_blocks(&self) -> Result<BlockCount, Self::Error> {
+        Ok(BlockCount(LOCAL_STORAGE_SIZE as u32 / 512))
+    }
+}
+
+struct JSTime;
+
+impl TimeSource for JSTime {
+    fn get_timestamp(&self) -> Timestamp {
+        let d = Date::new_0();
+        Timestamp {
+            year_since_1970: (d.get_utc_full_year() - 1970) as u8,
+            zero_indexed_month: d.get_utc_month() as u8,
+            zero_indexed_day: (d.get_utc_date() - 1) as u8,
+            hours: d.get_utc_hours() as u8,
+            minutes: d.get_utc_minutes() as u8,
+            seconds: d.get_utc_seconds() as u8,
+        }
     }
 }
 
@@ -141,7 +250,7 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
         .expect("should register `requestAnimationFrame` OK");
 }
 
-fn loop_func<P: Program + 'static>(
+fn loop_func<P: Program<B, TS> + 'static, B: BlockDevice, TS: TimeSource>(
     mut program: P,
     mut output: BrowserOutput,
     window: Window,
@@ -224,10 +333,15 @@ pub fn midi_new_message(message: &JsValue) {
 
 // This is like the `main` function, except for JavaScript.
 #[wasm_bindgen(start)]
-pub fn main_js() -> Result<(), JsValue> {
+pub async fn main_js() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
 
-    let program = SequencerProgram::new();
+    let mut program = SequencerProgram::new(
+        FileSystem::new(LocalStorageDevice, JSTime)
+            .await
+            .ok()
+            .unwrap(),
+    );
 
     let window = web_sys::window().unwrap();
     let document = window.document().unwrap();
@@ -244,6 +358,8 @@ pub fn main_js() -> Result<(), JsValue> {
     );
 
     let output = BrowserOutput::new();
+
+    program.setup().await.unwrap();
 
     loop_func(program, output, window, display);
 

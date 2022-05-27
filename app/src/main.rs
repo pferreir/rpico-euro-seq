@@ -77,6 +77,8 @@ async fn main_loop(
 ) -> ! {
     let buffer_addr = unsafe { scr.buffer_addr() };
 
+    program.setup().await;
+
     loop {
         free(|cs| {
             if let Some(midi_in) = midi_in::MIDI_IN.borrow(cs).borrow_mut().deref_mut() {
@@ -208,7 +210,7 @@ fn main() -> ! {
         pins.gpio5.into_push_pull_output(),
     );
 
-    let mut program = programs::SequencerProgram::new();
+    let program = programs::SequencerProgram::new();
 
     encoder::init_encoder(
         pins.gpio21.into_floating_input(),

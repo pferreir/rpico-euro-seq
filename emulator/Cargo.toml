@@ -9,7 +9,10 @@ crate-type = ["cdylib"]
 [dependencies]
 embedded-graphics = "^0.7"
 embedded-graphics-web-simulator = "^0.3"
+embedded-sdmmc = { path = "../embedded-sdmmc-rs" }
 wasm-bindgen = { version = "^0.2", features = ["nightly", "serde-serialize"] }
+wasm-bindgen-futures = "^0.4"
+wasm-rs-async-executor = { version = "^0.9", features = ["cooperative-browser"] }
 tinybmp = "^0.3"
 logic = { path = "../logic" }
 voice_lib = { path = "../voice_lib" }
@@ -17,6 +20,7 @@ js-sys = "^0.3"
 midi-types = "^0.1"
 serde = { version = "^1.0", features = ["derive"] }
 wee_alloc = "^0.4"
+ufmt = "^0.1"
 
 [dependencies.web-sys]
 version = "^0.3"
@@ -34,7 +38,13 @@ features = [
   'OscillatorType',
   'AudioParam',
   'AudioNode',
-  'GainNode']
+  'GainNode',
+  'Headers',
+  'Request',
+  'RequestInit',
+  'RequestMode',
+  'Response'
+]
 
 [target."cfg(debug_assertions)".dependencies]
 console_error_panic_hook = "^0.1.5"

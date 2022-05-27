@@ -6,6 +6,6 @@
     // "rust-analyzer.checkOnSave.overrideCommand": ["cargo", "check", "--message-format=json", "--package=emulator", "--target=wasm32-unknown-unknown"],
     "rust-analyzer.cargo.target": "wasm32-unknown-unknown",
     "[rust]": {
-      "editor.defaultFormatter": "matklad.rust-analyzer"
+      "editor.defaultFormatter": "rust-lang.rust-analyzer"
     }
 }
