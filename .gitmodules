@@ -1,3 +1,4 @@
 [submodule "embedded-sdmmc-rs"]
 	path = embedded-sdmmc-rs
-	url = git@github.com:thalesfragoso/embedded-sdmmc-rs.git
+	url = git@github.com:pferreir/embedded-sdmmc-rs.git
+        branch = rebased-sync
