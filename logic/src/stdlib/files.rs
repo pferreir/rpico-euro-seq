@@ -1,6 +1,6 @@
 use core::{marker::PhantomData, str};
 use embedded_sdmmc::{
-    BlockDevice, Controller, Directory, Error as ESDMMCError, File as FATFile, Mode, ShortFileName,
+    BlockDevice, Controller, Directory, File as FATFile, Mode, ShortFileName,
     TimeSource, Volume, VolumeIdx,
 };
 use heapless::{String, Vec};

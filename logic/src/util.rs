@@ -105,3 +105,18 @@ impl fmt::Write for ByteMutWriter<'_> {
         Ok(())
     }
 }
+
+pub(crate) trait DiscreteUnwrap<T, E> {
+    fn duwrp(self) -> T;
+}
+
+impl<T, E> DiscreteUnwrap<T, E> for Result<T, E> {
+    fn duwrp(self) -> T  {
+        match self {
+            Ok(r) => r,
+            Err(_) => {
+                panic!("duwrp() failed.")
+            },
+        }
+    }
+}

@@ -9,7 +9,7 @@ use tinybmp::Bmp;
 use self::{
     config::Config,
     recorder::MonoRecorderBox,
-    ui::{icons::*, UIAction, NUM_UI_ACTIONS},
+    ui::{actions::{icons::*, UIAction, NUM_UI_ACTIONS}, overlays::Overlay},
 };
 use crate::{
     stdlib::FileSystem,
@@ -60,6 +60,7 @@ pub struct SequencerProgram<'t, B: BlockDevice, TS: TimeSource> {
 
     // UI
     pub(crate) selected_action: UIAction,
+    pub(crate) overlays: Queue<Overlay,8>,
     // Icons
     pub(crate) play_icon: Bmp<'t, Rgb565>,
     pub(crate) pause_icon: Bmp<'t, Rgb565>,
@@ -87,6 +88,7 @@ impl<'t, B: BlockDevice, TS: TimeSource> Program<B, TS> for SequencerProgram<'t,
 
             // UI
             selected_action: UIAction::PlayPause,
+            overlays: Queue::new(),
             // Icons
             play_icon: Bmp::from_slice(PLAY_ICON).unwrap(),
             pause_icon: Bmp::from_slice(PAUSE_ICON).unwrap(),
@@ -105,6 +107,7 @@ impl<'t, B: BlockDevice, TS: TimeSource> Program<B, TS> for SequencerProgram<'t,
         <D as DrawTarget>::Error: Debug,
     {
         self._render_screen(screen);
+        self._draw_overlays(screen);
     }
 
     fn process_ui_input(&mut self, msg: &UIInputEvent) {

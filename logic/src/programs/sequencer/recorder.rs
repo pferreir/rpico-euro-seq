@@ -34,7 +34,7 @@ impl<'t> MonoRecorderBox<'t> {
 
     pub(crate) fn key_pressed(&mut self, beat: usize, n: NotePair) {
         self.current_note.push(n).unwrap();
-        self.voice_state.set_note(beat, |_| (n, NoteFlag::Note));
+        self.voice_state.set_note(beat, (Some(n), NoteFlag::Note));
         self.keys_changed = true;
         let mut text = String::<32>::new();
         uwrite!(text, "KEY PRESS {}: {:?}", beat, n).unwrap();
@@ -53,13 +53,13 @@ impl<'t> MonoRecorderBox<'t> {
 
     pub(crate) fn beat(&mut self, beat: usize) {
         if !self.keys_changed && let Some(n) = self.current_note.last() {
-            self.voice_state.set_note(beat, |_| (*n, NoteFlag::Legato));
+            self.voice_state.set_note(beat, (Some(*n), NoteFlag::Legato));
         }
 
         // initialize already next note if there is at least a pressed one
         if let Some(n) = self.current_note.last() {
             self.voice_state
-                .set_note(beat + 1, |_| (*n, NoteFlag::Legato));
+                .set_note(beat + 1, (Some(*n), NoteFlag::Legato));
         }
         self.keys_changed = false;
     }
@@ -68,7 +68,7 @@ impl<'t> MonoRecorderBox<'t> {
         &'t self,
         t: usize,
         num: usize,
-    ) -> impl Iterator<Item = (usize, NotePair, NoteFlag)> + 't {
+    ) -> impl Iterator<Item = (usize, Option<NotePair>, NoteFlag)> + 't {
         self.voice_state.since(t, num)
     }
 }

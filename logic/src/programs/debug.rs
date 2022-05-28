@@ -5,8 +5,7 @@ use embedded_graphics::{
     pixelcolor::Rgb565,
     prelude::*,
     primitives::{Circle, PrimitiveStyleBuilder},
-    text::Text,
-    Drawable,
+    text::Text
 };
 use embedded_midi::MidiMessage;
 use embedded_sdmmc::{TimeSource, BlockDevice};

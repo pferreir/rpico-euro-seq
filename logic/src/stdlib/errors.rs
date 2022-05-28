@@ -1,10 +1,9 @@
 use embedded_sdmmc::{Error as ESDMMCError, BlockDevice};
 use heapless::String;
 use rmp_serde::{decode::Error as RMPDeserializerError, encode::Error as RMPSerializerError};
-use ufmt::{uDisplay, Formatter, uWrite, uwrite, uDebug};
+use ufmt::{uDisplay, Formatter, uWrite, uwrite};
 use core::{
-    fmt::Debug,
-    str
+    fmt::Debug
 };
 
 use super::{File, Closed};

@@ -1,9 +1,11 @@
 #![no_std]
 
+use core::{fmt, f32::consts::E};
 use heapless::String;
+use serde::{Deserialize, Serialize, de::{Visitor, SeqAccess}};
 use ufmt::{derive::uDebug, uDisplay, uWrite, uwrite, Formatter};
 
-#[derive(Copy, Clone, Debug, uDebug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, uDebug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum Note {
     C = 0,
@@ -20,12 +22,12 @@ pub enum Note {
     B = 11,
 }
 
-#[derive(Copy, Clone, Debug, uDebug)]
+#[derive(Copy, Clone, Debug, uDebug, PartialEq)]
 #[repr(u8)]
 pub enum NoteFlag {
     None = 0,
     Note = 1,
-    Legato = 2
+    Legato = 2,
 }
 
 impl Into<NoteFlag> for u8 {
@@ -34,12 +36,10 @@ impl Into<NoteFlag> for u8 {
             0 => NoteFlag::None,
             1 => NoteFlag::Note,
             2 => NoteFlag::Legato,
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }
-
-
 
 impl uDisplay for Note {
     fn fmt<W>(&self, fmt: &mut Formatter<'_, W>) -> Result<(), W::Error>
@@ -72,7 +72,7 @@ impl Note {
     }
 }
 
-#[derive(uDebug, Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord)]
+#[derive(uDebug, Debug, PartialEq, Eq, Clone, Copy, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct NotePair(pub Note, pub i8);
 
 impl uDisplay for NotePair {
@@ -121,7 +121,7 @@ impl Into<u8> for &NotePair {
 #[derive(Debug)]
 pub struct VoiceTrack<const N: usize, const M: usize> {
     notes: [u8; N],
-    flags: [u8; M]
+    flags: [u8; M],
 }
 
 const fn create_array<const N: usize>() -> [u8; N] {
@@ -142,13 +142,16 @@ impl<const N: usize, const M: usize> VoiceTrack<N, M> {
         }
         Self {
             notes: create_array(),
-            flags: [0u8; M]
+            flags: [0u8; M],
         }
     }
 
-    pub fn set_note<F: Fn(Option<(NotePair, NoteFlag)>) -> (NotePair, NoteFlag)>(&mut self, beat: usize, f: F) {
-        let (note, flag) = f(self.get_note(beat));
-        self.notes[beat] = (&note).into();
+    pub fn set_note(
+        &mut self,
+        beat: usize,
+        (note, flag): (Option<NotePair>, NoteFlag),
+    ) {
+        self.notes[beat] = (&note.unwrap_or(NotePair(Note::C, -127))).into();
         let idx = beat / 4;
         let sub_idx = beat % 4;
         let bit_mask = 0xc0 >> (sub_idx * 2);
@@ -161,12 +164,15 @@ impl<const N: usize, const M: usize> VoiceTrack<N, M> {
         let flags = (self.flags[idx] & (0xc0 >> (sub_idx * 2))) >> (7 - sub_idx * 2);
         match flags.into() {
             NoteFlag::None => None,
-            _ => Some((self.notes[t].into(), flags.into()))
+            _ => Some((self.notes[t].into(), flags.into())),
         }
-
     }
 
-    pub fn since<'t>(&'t self, t: usize, num: usize) -> impl Iterator<Item = (usize, NotePair, NoteFlag)> + 't {
+    pub fn since<'t>(
+        &'t self,
+        t: usize,
+        num: usize,
+    ) -> impl Iterator<Item = (usize, Option<NotePair>, NoteFlag)> + 't {
         self.notes[t..(t + num)]
             .iter()
             .enumerate()
@@ -174,30 +180,88 @@ impl<const N: usize, const M: usize> VoiceTrack<N, M> {
                 let idx = (t + n) / 4;
                 let sub_idx = (t + n) % 4;
                 let flags = (self.flags[idx] & (0xc0 >> (sub_idx * 2))) >> (7 - sub_idx * 2);
-                (t + n, (*e).into(), flags.into())
+                let flags: NoteFlag = flags.into();
+                (
+                    t + n,
+                    if flags == NoteFlag::None {
+                        None
+                    } else {
+                        Some((*e).into())
+                    },
+                    flags.into(),
+                )
             })
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum NoteState {
     On(NotePair),
     Off,
-    Legato(NotePair)
+    Legato(NotePair),
 }
 
-impl From<&NoteState> for (Option<NotePair>, NoteFlag) {
-    fn from(state: &NoteState) -> Self {
+impl From<NoteState> for (Option<NotePair>, NoteFlag) {
+    fn from(state: NoteState) -> Self {
         match state {
-            NoteState::On(n) => {
-                (Some(*n), NoteFlag::Note)
-            },
-            NoteState::Off => {
-                (None, NoteFlag::None)
-            },
-            NoteState::Legato(n) => {
-                (Some(*n), NoteFlag::Legato)
-            }
+            NoteState::On(n) => (Some(n), NoteFlag::Note),
+            NoteState::Off => (None, NoteFlag::None),
+            NoteState::Legato(n) => (Some(n), NoteFlag::Legato),
         }
+    }
+}
+
+impl From<(Option<NotePair>, NoteFlag)> for NoteState {
+    fn from((np, nf): (Option<NotePair>, NoteFlag)) -> Self {
+        match nf {
+            NoteFlag::None => NoteState::Off,
+            NoteFlag::Note => NoteState::On(np.unwrap()),
+            NoteFlag::Legato => NoteState::Legato(np.unwrap()),
+        }
+    }
+}
+
+impl<const N: usize, const M: usize> Serialize for VoiceTrack<N, M> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.collect_seq(
+            self.since(0, { N } - 1)
+                .map(|(_, np, nf)| -> NoteState { (np, nf).into() }),
+        )
+    }
+}
+
+struct VoiceTrackVisitor<const N: usize, const M: usize>;
+
+impl<'de, const N: usize, const M: usize> Visitor<'de> for VoiceTrackVisitor<N, M> {
+    type Value = VoiceTrack<N, M>;
+
+    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("a sequence of note state values")
+    }
+
+    fn visit_seq<V>(self, mut seq: V) -> Result<Self::Value, V::Error>
+    where
+        V: SeqAccess<'de>,
+    {
+        let mut vt = VoiceTrack::new();
+        let mut n = 0;
+        while let Some(e) = seq.next_element::<NoteState>()? {
+            vt.set_note(n, e.into());
+            n += 1;
+        }
+        Ok(vt)
+    }
+}
+
+impl<'de, const N: usize, const M: usize> Deserialize<'de> for VoiceTrack<N, M> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_seq(VoiceTrackVisitor)
     }
 }
 
@@ -205,7 +269,7 @@ impl From<&NoteState> for (Option<NotePair>, NoteFlag) {
 mod tests {
     use heapless::String;
 
-    use super::{Note, NotePair, VoiceTrack, VoiceState};
+    use super::{Note, NotePair, VoiceState, VoiceTrack};
     use ufmt::uwrite;
 
     #[test]
