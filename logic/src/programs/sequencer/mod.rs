@@ -2,19 +2,22 @@ use core::{fmt::Debug, future::Future};
 
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
 use embedded_midi::MidiMessage;
-use embedded_sdmmc::{TimeSource, BlockDevice};
-use heapless::spsc::Queue;
+use embedded_sdmmc::{BlockDevice, TimeSource};
+use heapless::{spsc::Queue, Vec};
 use tinybmp::Bmp;
 
 use self::{
     config::Config,
     recorder::MonoRecorderBox,
-    ui::{actions::{icons::*, UIAction, NUM_UI_ACTIONS}, overlays::Overlay},
+    ui::{
+        actions::{icons::*, UIAction, NUM_UI_ACTIONS},
+        overlays::{FileMenu, Menu, Overlay},
+    },
 };
 use crate::{
-    stdlib::FileSystem,
+    stdlib::{FileSystem, ui::OverlayResult},
     ui::UIInputEvent,
-    util::{midi_note_to_lib, GateOutput, QueuePoppingIter},
+    util::{midi_note_to_lib, DiscreetUnwrap, GateOutput, QueuePoppingIter},
 };
 use voice_lib::NotePair;
 
@@ -60,7 +63,7 @@ pub struct SequencerProgram<'t, B: BlockDevice, TS: TimeSource> {
 
     // UI
     pub(crate) selected_action: UIAction,
-    pub(crate) overlays: Queue<Overlay,8>,
+    pub(crate) overlays: Vec<Overlay, 8>,
     // Icons
     pub(crate) play_icon: Bmp<'t, Rgb565>,
     pub(crate) pause_icon: Bmp<'t, Rgb565>,
@@ -76,6 +79,9 @@ impl<'t, B: BlockDevice, TS: TimeSource> Program<B, TS> for SequencerProgram<'t,
     type SetupFuture<'a> = impl Future<Output = Result<(), ProgramError<B>>> + 'a where Self: 'a;
 
     fn new(fs: FileSystem<B, TS>) -> Self {
+        let mut q = Vec::new();
+        q.push(Overlay::Menu(Menu::File(FileMenu::default())))
+            .duwrp();
         Self {
             fs,
             current_note: 72, // C5,
@@ -88,7 +94,7 @@ impl<'t, B: BlockDevice, TS: TimeSource> Program<B, TS> for SequencerProgram<'t,
 
             // UI
             selected_action: UIAction::PlayPause,
-            overlays: Queue::new(),
+            overlays: q,
             // Icons
             play_icon: Bmp::from_slice(PLAY_ICON).unwrap(),
             pause_icon: Bmp::from_slice(PAUSE_ICON).unwrap(),
@@ -112,14 +118,27 @@ impl<'t, B: BlockDevice, TS: TimeSource> Program<B, TS> for SequencerProgram<'t,
 
     fn process_ui_input(&mut self, msg: &UIInputEvent) {
         let (state_time, state_beat) = self.state.get_time();
+
+        if let Some(mut overlay) = self.overlays.pop() {
+            // Pop and push back, to avoid double-borrowing
+            match overlay.process_ui_input(self, msg) {
+                OverlayResult::Nop => {
+                    self.overlays.push(overlay).duwrp();
+                },
+                OverlayResult::Push(o) => {
+                    self.overlays.push(overlay).duwrp();
+                    self.overlays.push(o).duwrp();
+                },
+                OverlayResult::Replace(o) => {
+                    self.overlays.push(o).duwrp();
+                },
+                OverlayResult::Close => {},
+            }
+            return;
+        }
+
         match msg {
             UIInputEvent::EncoderTurn(v) => {
-                // let new_current_note = (self.current_note as i8) + v;
-                // self.current_note = if new_current_note < 0 {
-                //     0
-                // } else {
-                //     new_current_note as i8
-                // }
                 self.selected_action = ((self.selected_action as i8)
                     .wrapping_add(*v)
                     .rem_euclid(NUM_UI_ACTIONS as i8)
@@ -165,7 +184,9 @@ impl<'t, B: BlockDevice, TS: TimeSource> Program<B, TS> for SequencerProgram<'t,
 
     fn setup<'a>(&'a mut self) -> Self::SetupFuture<'a> {
         async {
-            Config::load(&mut self.fs).await.map_err(ProgramError::Stdlib)?;
+            Config::load(&mut self.fs)
+                .await
+                .map_err(ProgramError::Stdlib)?;
             Ok(())
         }
     }

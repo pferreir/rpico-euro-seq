@@ -6,7 +6,7 @@ use embedded_graphics::{
 };
 use voice_lib::NotePair;
 
-use crate::{screen::SCREEN_WIDTH, util::DiscreteUnwrap};
+use crate::{screen::SCREEN_WIDTH, util::DiscreetUnwrap};
 
 use super::{NUM_VERTICAL_NOTES, NOTE_HEIGHT};
 

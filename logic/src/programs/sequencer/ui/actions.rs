@@ -7,7 +7,7 @@ use embedded_graphics::{
 };
 use embedded_sdmmc::{BlockDevice, TimeSource};
 
-use crate::{programs::{sequencer::State, SequencerProgram}, util::DiscreteUnwrap};
+use crate::{programs::{sequencer::State, SequencerProgram}, util::DiscreetUnwrap};
 
 pub(crate) mod icons {
     pub(crate) static PLAY_ICON: &[u8] = include_bytes!("../../../../assets/play.bmp");

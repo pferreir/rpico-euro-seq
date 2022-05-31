@@ -1,4 +1,5 @@
 use core::fmt;
+use core::fmt::Debug;
 use core::str;
 use embedded_midi::Note as MidiNote;
 use heapless::spsc::Queue;
@@ -106,11 +107,11 @@ impl fmt::Write for ByteMutWriter<'_> {
     }
 }
 
-pub(crate) trait DiscreteUnwrap<T, E> {
+pub(crate) trait DiscreetUnwrap<T, E> {
     fn duwrp(self) -> T;
 }
 
-impl<T, E> DiscreteUnwrap<T, E> for Result<T, E> {
+impl<T, E> DiscreetUnwrap<T, E> for Result<T, E> {
     fn duwrp(self) -> T  {
         match self {
             Ok(r) => r,
