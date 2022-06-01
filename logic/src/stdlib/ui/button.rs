@@ -10,6 +10,8 @@ use embedded_graphics::{
 };
 use profont::PROFONT_12_POINT;
 
+use super::select::Selectable;
+
 
 const MIN_BUTTON_WIDTH: u32 = 30;
 
@@ -83,8 +85,10 @@ impl<'t, C> Button<'t, C> {
             _c: PhantomData
         }
     }
+}
 
-    pub fn with_selected(self, selected: bool) -> Self {
+impl<'t, C: WebColors> Selectable for Button<'t, C> {
+    fn with_selected(self, selected: bool) -> Self {
         Self { selected, ..self }
     }
 }

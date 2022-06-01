@@ -7,12 +7,13 @@ use embedded_graphics::{
     text::Text,
 };
 use embedded_sdmmc::{BlockDevice, TimeSource};
+use heapless::String;
 use profont::{PROFONT_12_POINT, PROFONT_14_POINT};
 
 use crate::{
     programs::SequencerProgram,
     screen::{SCREEN_HEIGHT, SCREEN_WIDTH},
-    stdlib::ui::{Button, OverlayResult, Input},
+    stdlib::ui::{select::{SelectGroup}, Input, Button, OverlayResult},
     ui::UIInputEvent,
 };
 
@@ -53,7 +54,20 @@ trait DialogDef {
     ) -> OverlayResult<O>;
 }
 
-pub(crate) struct FileSaveDialog;
+pub(crate) struct FileSaveDialog {
+    file_name: String<16>,
+    selection: i8,
+}
+
+impl Default for FileSaveDialog {
+    fn default() -> Self {
+        Self {
+            file_name: String::new(),
+            selection: 0,
+        }
+    }
+}
+
 pub(crate) struct FileLoadDialog;
 
 impl DialogDef for FileLoadDialog {
@@ -96,17 +110,11 @@ impl DialogDef for FileSaveDialog {
         )
         .draw(target)?;
 
-        // Text box
-        Input::new("filename.sng", Point::new(15, 40))
-            .with_selected(false)
-            .draw(target)?;
+        let mut sg: SelectGroup<3, _, _> = SelectGroup::new(target, self.selection as isize);
 
-        Button::new("OK", Point::new(15, 65))
-            .with_selected(true)
-            .draw(target)?;
-        Button::new("Cancel", Point::new(60, 65))
-            .with_selected(false)
-            .draw(target)?;
+        sg.add(Input::new("filename.sng", Point::new(15, 40)))?;
+        sg.add(Button::new("OK", Point::new(15, 65)))?;
+        sg.add(Button::new("Cancel", Point::new(60, 65)))?;
         Ok(())
     }
 
@@ -115,6 +123,13 @@ impl DialogDef for FileSaveDialog {
         program: &mut SequencerProgram<B, TS>,
         input: &UIInputEvent,
     ) -> OverlayResult<O> {
-        OverlayResult::Nop
+        match input {
+            UIInputEvent::EncoderTurn(v) => {
+                self.selection += v;
+                OverlayResult::Nop
+            }
+            UIInputEvent::EncoderSwitch(true) => OverlayResult::Nop,
+            _ => OverlayResult::Nop,
+        }
     }
 }

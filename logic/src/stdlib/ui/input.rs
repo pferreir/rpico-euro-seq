@@ -10,6 +10,8 @@ use embedded_graphics::{
 use heapless::String;
 use profont::PROFONT_12_POINT;
 
+use super::select::Selectable;
+
 pub struct Input<'t, C> {
     text: &'t str,
     position: Point,
@@ -84,6 +86,12 @@ impl<'t, C> Input<'t, C> {
     }
 
     pub fn with_selected(self, selected: bool) -> Self {
+        Self { selected, ..self }
+    }
+}
+
+impl<'t, C: WebColors> Selectable for Input<'t, C> {
+    fn with_selected(self, selected: bool) -> Self {
         Self { selected, ..self }
     }
 }

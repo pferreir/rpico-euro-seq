@@ -108,7 +108,7 @@ impl MenuDef<Overlay> for FileMenu
             }
             FileMenuOption::Save => {
                 log::info("CHOSE 'SAVE'");
-                OverlayResult::Push(Overlay::Dialog(Dialog::FileSave(FileSaveDialog)))
+                OverlayResult::Push(Overlay::Dialog(Dialog::FileSave(FileSaveDialog::default())))
             }
             FileMenuOption::Cancel => {
                 log::info("CHOSE 'CANCEL'");
