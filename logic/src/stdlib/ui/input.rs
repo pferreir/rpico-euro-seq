@@ -5,44 +5,37 @@ use embedded_graphics::{
     prelude::*,
     primitives::{PrimitiveStyleBuilder, Rectangle},
     text::Text,
-    Drawable,
+    Drawable, pixelcolor::Rgb565,
 };
 use heapless::String;
 use profont::PROFONT_12_POINT;
 
-use super::select::Selectable;
+use super::{select::{Selectable}, DynDrawable};
 
-pub struct Input<'t, C> {
-    text: &'t str,
+pub struct Input {
+    text: &'static str,
     position: Point,
-    selected: bool,
-    length: u8,
-    _c: PhantomData<C>,
+    selected: bool
 }
 
-impl<'t, C: WebColors> Drawable for Input<'t, C> {
-    type Color = C;
-    type Output = ();
+impl<T: DrawTarget<Color = Rgb565>> DynDrawable<T> for Input {
 
-    fn draw<D>(&self, target: &mut D) -> Result<Self::Output, D::Error>
-    where
-        D: embedded_graphics::draw_target::DrawTarget<Color = Self::Color>,
-    {
-        let text_style = MonoTextStyle::new(&PROFONT_12_POINT, C::WHITE);
+    fn draw(&self, target: &mut T) -> Result<(), T::Error> {
+        let text_style = MonoTextStyle::new(&PROFONT_12_POINT, Rgb565::WHITE);
         let input_style = PrimitiveStyleBuilder::new()
-            .fill_color(C::CSS_DIM_GRAY)
+            .fill_color(Rgb565::CSS_DIM_GRAY)
             .stroke_width(1)
-            .stroke_color(C::CSS_AQUAMARINE)
+            .stroke_color(Rgb565::CSS_AQUAMARINE)
             .build();
         let input_style_selected = PrimitiveStyleBuilder::new()
-            .fill_color(C::CSS_DIM_GRAY)
+            .fill_color(Rgb565::CSS_DIM_GRAY)
             .stroke_width(1)
-            .stroke_color(C::CSS_YELLOW)
+            .stroke_color(Rgb565::CSS_YELLOW)
             .build();
 
         let string = String::<64>::from(
             &"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-                [..self.length as usize],
+                [..12],
         );
         let mut text = Text::with_baseline(
             &string,
@@ -70,28 +63,22 @@ impl<'t, C: WebColors> Drawable for Input<'t, C> {
     }
 }
 
-impl<'t, C> Input<'t, C> {
-    pub fn new(text: &'t str, position: Point) -> Self {
+impl Input {
+    pub fn new(text: &'static str, position: Point) -> Self {
         Self {
             text,
-            position,
             selected: false,
-            length: 12,
-            _c: PhantomData,
+            position
         }
-    }
-
-    pub fn with_length(self, length: u8) -> Self {
-        Self { length, ..self }
-    }
-
-    pub fn with_selected(self, selected: bool) -> Self {
-        Self { selected, ..self }
     }
 }
 
-impl<'t, C: WebColors> Selectable for Input<'t, C> {
-    fn with_selected(self, selected: bool) -> Self {
-        Self { selected, ..self }
+impl<T: DrawTarget<Color = Rgb565>> Selectable<T> for Input {
+    fn set_selected(&mut self, selected: bool) {
+        self.selected = selected;
+    }
+
+    fn is_selected(&self) -> bool {
+        self.selected
     }
 }

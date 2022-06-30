@@ -5,10 +5,10 @@ use embedded_graphics::{
     pixelcolor::Rgb565,
     prelude::*,
     primitives::{Circle, PrimitiveStyleBuilder},
-    text::Text
+    text::Text,
 };
 use embedded_midi::MidiMessage;
-use embedded_sdmmc::{TimeSource, BlockDevice};
+use embedded_sdmmc::{BlockDevice, TimeSource};
 use heapless::{spsc::Queue, String};
 use ufmt::uwrite;
 
@@ -33,8 +33,12 @@ pub struct DebugProgram<B: BlockDevice, TS: TimeSource> {
     frame_counter: u8,
 }
 
-impl<B: BlockDevice, TS: TimeSource> Program<B, TS> for DebugProgram<B, TS> {
-    type SetupFuture<'a> = impl Future<Output = Result<(), ProgramError<B>>> + 'a where Self: 'a;
+impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>> Program<'t, B, TS, D>
+    for DebugProgram<B, TS>
+where
+    <D as DrawTarget>::Error: Debug,
+{
+    type SetupFuture<'a> = impl Future<Output = Result<(), ProgramError<B>>> + 'a where Self: 'a, 't: 'a, TS: 't, B: 't, D: 't, <D as DrawTarget>::Error: Debug;
 
     fn new(fs: FileSystem<B, TS>) -> Self {
         Self {
@@ -50,14 +54,10 @@ impl<B: BlockDevice, TS: TimeSource> Program<B, TS> for DebugProgram<B, TS> {
             frame_counter: 0,
         }
     }
-    fn render_screen<D>(&self, screen: &mut D)
-    where
-        D: DrawTarget<Color = Rgb565>,
-        <D as DrawTarget>::Error: Debug,
-    {
-        let STYLE_YELLOW: MonoTextStyle<Rgb565> = MonoTextStyle::new(&FONT_10X20, Rgb565::YELLOW);
-        let STYLE_RED: MonoTextStyle<Rgb565> = MonoTextStyle::new(&FONT_10X20, Rgb565::RED);
-        let STYLE_CYAN: MonoTextStyle<Rgb565> = MonoTextStyle::new(&FONT_10X20, Rgb565::CYAN);
+    fn render_screen(&self, screen: &mut D) {
+        let STYLE_YELLOW = MonoTextStyle::new(&FONT_10X20, Rgb565::YELLOW);
+        let STYLE_RED = MonoTextStyle::new(&FONT_10X20, Rgb565::RED);
+        let STYLE_CYAN = MonoTextStyle::new(&FONT_10X20, Rgb565::CYAN);
 
         let STYLE_FILLED = PrimitiveStyleBuilder::new()
             .stroke_color(Rgb565::WHITE)
@@ -144,7 +144,7 @@ impl<B: BlockDevice, TS: TimeSource> Program<B, TS> for DebugProgram<B, TS> {
         }
     }
 
-    fn process_ui_input(&mut self, msg: &UIInputEvent) {
+    fn process_ui_input(&mut self, msg: &UIInputEvent) where TS: 't, B: 't, D: 't {
         match msg {
             UIInputEvent::EncoderTurn(n) => {
                 self.encoder_pos += n;
@@ -161,7 +161,10 @@ impl<B: BlockDevice, TS: TimeSource> Program<B, TS> for DebugProgram<B, TS> {
         }
     }
 
-    fn setup<'a>(&'a mut self) -> Self::SetupFuture<'a> {
+    fn setup<'u>(&'u mut self) -> Self::SetupFuture<'u>
+    where
+        't: 'u,
+    {
         async { Ok(()) }
     }
 

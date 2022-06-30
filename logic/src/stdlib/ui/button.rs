@@ -6,41 +6,37 @@ use embedded_graphics::{
     prelude::*,
     primitives::{PrimitiveStyleBuilder, Rectangle},
     text::{Text, TextStyleBuilder},
-    Drawable,
+    Drawable, pixelcolor::Rgb565,
 };
 use profont::PROFONT_12_POINT;
 
-use super::select::Selectable;
+use super::{select::{Selectable}, DynDrawable};
 
 
 const MIN_BUTTON_WIDTH: u32 = 30;
 
-pub struct Button<'t, C> {
-    text: &'t str,
+pub struct Button {
+    text: &'static str,
     selected: bool,
-    position: Point,
-    _c: PhantomData<C>
+    position: Point
 }
 
-impl<'t, C: WebColors> Drawable for Button<'t, C> {
-    type Color = C;
-    type Output = ();
-
-    fn draw<D>(&self, target: &mut D) -> Result<Self::Output, D::Error>
+impl<T: DrawTarget<Color = Rgb565>> DynDrawable<T> for Button {
+    fn draw(&self, target: &mut T) -> Result<(), T::Error>
     where
-        D: DrawTarget<Color = Self::Color>,
+        T: DrawTarget<Color = Rgb565>,
     {
-        let text_style = MonoTextStyle::new(&PROFONT_12_POINT, C::WHITE);
-        let text_style_selected = MonoTextStyle::new(&PROFONT_12_POINT, C::YELLOW);
+        let text_style = MonoTextStyle::new(&PROFONT_12_POINT, Rgb565::WHITE);
+        let text_style_selected = MonoTextStyle::new(&PROFONT_12_POINT, Rgb565::YELLOW);
         let button_style = PrimitiveStyleBuilder::new()
-            .fill_color(C::CSS_SLATE_BLUE)
+            .fill_color(Rgb565::CSS_SLATE_BLUE)
             .stroke_width(1)
-            .stroke_color(C::CSS_AQUAMARINE)
+            .stroke_color(Rgb565::CSS_AQUAMARINE)
             .build();
         let button_style_selected = PrimitiveStyleBuilder::new()
-            .fill_color(C::CSS_CORAL)
+            .fill_color(Rgb565::CSS_CORAL)
             .stroke_width(1)
-            .stroke_color(C::CSS_CRIMSON)
+            .stroke_color(Rgb565::CSS_CRIMSON)
             .build();
 
         let mut text = Text::with_text_style(
@@ -76,19 +72,22 @@ impl<'t, C: WebColors> Drawable for Button<'t, C> {
     }
 }
 
-impl<'t, C> Button<'t, C> {
-    pub fn new(text: &'t str, position: Point) -> Self {
+impl Button {
+    pub fn new(text: &'static str, position: Point) -> Self {
         Self {
             text,
             selected: false,
-            position,
-            _c: PhantomData
+            position
         }
     }
 }
 
-impl<'t, C: WebColors> Selectable for Button<'t, C> {
-    fn with_selected(self, selected: bool) -> Self {
-        Self { selected, ..self }
+impl<T: DrawTarget<Color = Rgb565>> Selectable<T> for Button {
+    fn set_selected(&mut self, selected: bool) {
+        self.selected = selected;
+    }
+
+    fn is_selected(&self) -> bool {
+        self.selected
     }
 }

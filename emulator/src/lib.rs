@@ -250,7 +250,7 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
         .expect("should register `requestAnimationFrame` OK");
 }
 
-fn loop_func<P: Program<B, TS> + 'static, B: BlockDevice, TS: TimeSource>(
+fn loop_func<'t, P: Program<'t, B, TS, WebSimulatorDisplay<Rgb565>> + 'static, B: BlockDevice + 't, TS: TimeSource + 't>(
     mut program: P,
     mut output: BrowserOutput,
     window: Window,

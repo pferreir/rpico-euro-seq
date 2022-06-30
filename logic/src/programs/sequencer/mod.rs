@@ -1,9 +1,10 @@
-use core::{fmt::Debug, future::Future};
+use core::{fmt::Debug, future::Future, marker::PhantomData};
 
+use alloc::{vec::Vec, boxed::Box};
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
 use embedded_midi::MidiMessage;
 use embedded_sdmmc::{BlockDevice, TimeSource};
-use heapless::{spsc::Queue, Vec};
+use heapless::spsc::Queue;
 use tinybmp::Bmp;
 
 use self::{
@@ -11,11 +12,11 @@ use self::{
     recorder::MonoRecorderBox,
     ui::{
         actions::{icons::*, UIAction, NUM_UI_ACTIONS},
-        overlays::{FileMenu, Menu, Overlay},
+        overlays::{FileMenu},
     },
 };
 use crate::{
-    stdlib::{FileSystem, ui::OverlayResult},
+    stdlib::{ui::{OverlayResult, Overlay}, FileSystem},
     ui::UIInputEvent,
     util::{midi_note_to_lib, DiscreetUnwrap, GateOutput, QueuePoppingIter},
 };
@@ -50,7 +51,7 @@ enum VoiceConfig {
     PolySteal,
 }
 
-pub struct SequencerProgram<'t, B: BlockDevice, TS: TimeSource> {
+pub struct SequencerProgram<'t, B: BlockDevice, TS: TimeSource, D> {
     fs: FileSystem<B, TS>,
     pub(crate) current_note: u8,
     program_time: u32,
@@ -63,7 +64,7 @@ pub struct SequencerProgram<'t, B: BlockDevice, TS: TimeSource> {
 
     // UI
     pub(crate) selected_action: UIAction,
-    pub(crate) overlays: Vec<Overlay, 8>,
+    pub(crate) overlays: Vec<Box<dyn Overlay<'t, D, Self, B, TS> + 't>>,
     // Icons
     pub(crate) play_icon: Bmp<'t, Rgb565>,
     pub(crate) pause_icon: Bmp<'t, Rgb565>,
@@ -73,15 +74,18 @@ pub struct SequencerProgram<'t, B: BlockDevice, TS: TimeSource> {
     pub(crate) stop_on_icon: Bmp<'t, Rgb565>,
     pub(crate) beginning_icon: Bmp<'t, Rgb565>,
     pub(crate) seek_icon: Bmp<'t, Rgb565>,
+
+    _d: PhantomData<D>
 }
 
-impl<'t, B: BlockDevice, TS: TimeSource> Program<B, TS> for SequencerProgram<'t, B, TS> {
-    type SetupFuture<'a> = impl Future<Output = Result<(), ProgramError<B>>> + 'a where Self: 'a;
+impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>> Program<'t, B, TS, D> for SequencerProgram<'t, B, TS, D> where
+    <D as DrawTarget>::Error: Debug
+{
+    type SetupFuture<'a> = impl Future<Output = Result<(), ProgramError<B>>> + 'a where Self: 'a, B: 't, TS: 't, D: 't, <D as DrawTarget>::Error: Debug;
 
     fn new(fs: FileSystem<B, TS>) -> Self {
-        let mut q = Vec::new();
-        q.push(Overlay::Menu(Menu::File(FileMenu::default())))
-            .duwrp();
+        let mut q: Vec<Box<dyn Overlay<D, Self, B, TS>>> = Vec::new();
+        q.push(Box::new(FileMenu::default()));
         Self {
             fs,
             current_note: 72, // C5,
@@ -104,35 +108,45 @@ impl<'t, B: BlockDevice, TS: TimeSource> Program<B, TS> for SequencerProgram<'t,
             stop_on_icon: Bmp::from_slice(STOP_ON_ICON).unwrap(),
             beginning_icon: Bmp::from_slice(BEGINNING_ICON).unwrap(),
             seek_icon: Bmp::from_slice(SEEK_ICON).unwrap(),
+
+            _d: PhantomData
         }
     }
 
-    fn render_screen<D>(&self, screen: &mut D)
-    where
-        D: DrawTarget<Color = Rgb565>,
-        <D as DrawTarget>::Error: Debug,
-    {
+    fn render_screen(&self, screen: &mut D) {
         self._render_screen(screen);
         self._draw_overlays(screen);
     }
 
-    fn process_ui_input(&mut self, msg: &UIInputEvent) {
+    fn process_ui_input<'u>(&mut self, msg: &UIInputEvent) where TS: 't, B: 't, D: 't {
         let (state_time, state_beat) = self.state.get_time();
 
-        if let Some(mut overlay) = self.overlays.pop() {
-            // Pop and push back, to avoid double-borrowing
-            match overlay.process_ui_input(self, msg) {
-                OverlayResult::Nop => {
-                    self.overlays.push(overlay).duwrp();
-                },
+        let res = {
+            let mut ovr = self.overlays.pop();
+            let res = match ovr.as_mut() {
+                Some(o) => {
+                    let v = o.process_ui_input(msg, self);
+                    Some(v)
+                }
+                None => None,
+            };
+
+            if let Some(o) = ovr {
+                self.overlays.push(o);
+            }
+            res
+        };
+
+        if let Some(res) = res {
+            match res {
+                OverlayResult::Nop => {}
                 OverlayResult::Push(o) => {
-                    self.overlays.push(overlay).duwrp();
-                    self.overlays.push(o).duwrp();
-                },
+                    self.overlays.push(o);
+                }
                 OverlayResult::Replace(o) => {
-                    self.overlays.push(o).duwrp();
-                },
-                OverlayResult::Close => {},
+                    self.overlays.push(o);
+                }
+                OverlayResult::Close => {}
             }
             return;
         }
@@ -182,7 +196,10 @@ impl<'t, B: BlockDevice, TS: TimeSource> Program<B, TS> for SequencerProgram<'t,
         }
     }
 
-    fn setup<'a>(&'a mut self) -> Self::SetupFuture<'a> {
+    fn setup<'u>(&'u mut self) -> Self::SetupFuture<'u>
+    where
+        't: 'u,
+    {
         async {
             Config::load(&mut self.fs)
                 .await

@@ -57,8 +57,8 @@ impl From<u8> for UIAction {
     }
 }
 
-impl<'t, B: BlockDevice, TS: TimeSource> SequencerProgram<'t, B, TS> {
-    pub(crate) fn draw_buttons<D>(&self, pos: Point, screen: &mut D)
+impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>> SequencerProgram<'t, B, TS, D> {
+    pub(crate) fn draw_buttons(&self, pos: Point, screen: &mut D)
     where
         D: DrawTarget<Color = Rgb565>,
     {

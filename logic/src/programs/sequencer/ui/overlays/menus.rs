@@ -1,43 +1,17 @@
-use embedded_graphics::{
-    draw_target::DrawTarget,
-    pixelcolor::Rgb565,
-    prelude::*,
-    Drawable,
-};
+use alloc::boxed::Box;
+use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::*, Drawable};
 use embedded_sdmmc::{BlockDevice, TimeSource};
 
 use crate::{
     log,
-    programs::{SequencerProgram, Program},
+    programs::Program,
+    stdlib::ui::{MenuDef, MenuOptions, OverlayResult},
     ui::UIInputEvent,
-    util::DiscreetUnwrap, stdlib::ui::{MenuOptions, MenuDef, OverlayResult},
+    util::DiscreetUnwrap,
+    impl_overlay
 };
 
-use super::{dialogs::{FileSaveDialog, FileLoadDialog, Dialog}, Overlay};
-
-pub(crate) enum Menu {
-    File(FileMenu),
-}
-
-impl Menu {
-    pub(super) fn draw<D: DrawTarget<Color = Rgb565>>(&self, target: &mut D) -> Result<(), D::Error> {
-        match self {
-            Menu::File(f) => f.draw(target),
-            _ => unimplemented!(),
-        }
-    }
-
-    pub fn process_ui_input<B: BlockDevice, TS: TimeSource>(
-        &mut self,
-        program: &mut SequencerProgram<B, TS>,
-        input: &UIInputEvent,
-    ) -> OverlayResult<Overlay> {
-        match self {
-            Menu::File(f) => f.process_ui_input(program, input),
-            _ => unimplemented!(),
-        }
-    }
-}
+use super::dialogs::{FileLoadDialog, FileSaveDialog};
 
 pub(crate) struct FileMenu {
     selection: FileMenuOption,
@@ -76,16 +50,29 @@ impl TryFrom<i8> for FileMenuOption {
 
 impl MenuOptions for FileMenu {}
 
-impl MenuDef<Overlay> for FileMenu
-{
-    type OptionsType = FileMenuOption;
-    const OPTIONS: &'static [FileMenuOption] = &[
-        FileMenuOption::Load,
-        FileMenuOption::Save,
-        FileMenuOption::Cancel,
-    ];
+impl_overlay!(FileMenu);
 
-    fn label(option: &Self::OptionsType) -> &'static str {
+impl<
+        't,
+        D: DrawTarget<Color = Rgb565>,
+        P: Program<'t, B, TS, D>,
+        B: BlockDevice,
+        TS: TimeSource,
+    > MenuDef<'t, D, P, B, TS> for FileMenu
+{
+    type OptionType = FileMenuOption;
+
+    fn options(&self) -> &'t [Self::OptionType]
+    where
+        Self: Sized,
+    {
+        &[
+            FileMenuOption::Load,
+            FileMenuOption::Save,
+            FileMenuOption::Cancel,
+        ]
+    }
+    fn label(&self, option: &FileMenuOption) -> &'static str {
         match option {
             FileMenuOption::Load => "Load",
             FileMenuOption::Save => "Save",
@@ -93,22 +80,22 @@ impl MenuDef<Overlay> for FileMenu
         }
     }
 
-    fn selected(&self, option: &Self::OptionsType) -> bool {
+    fn selected(&self, option: &FileMenuOption) -> bool {
         self.selection == *option
     }
 
-    fn run<P: Program<B, TS>, B: BlockDevice, TS: TimeSource>(
-        program: &mut P,
-        option: &Self::OptionsType,
-    ) -> OverlayResult<Overlay> {
+    fn run(program: &mut P, option: &FileMenuOption) -> OverlayResult<'t, D, P, B, TS>
+    where
+        D: 't,
+    {
         match option {
             FileMenuOption::Load => {
                 log::info("CHOSE 'LOAD'");
-                OverlayResult::Push(Overlay::Dialog(Dialog::FileLoad(FileLoadDialog)))
+                OverlayResult::Push(Box::new(FileLoadDialog::<D>::default()))
             }
             FileMenuOption::Save => {
                 log::info("CHOSE 'SAVE'");
-                OverlayResult::Push(Overlay::Dialog(Dialog::FileSave(FileSaveDialog::default())))
+                OverlayResult::Push(Box::new(FileSaveDialog::<D>::default()))
             }
             FileMenuOption::Cancel => {
                 log::info("CHOSE 'CANCEL'");
@@ -117,23 +104,24 @@ impl MenuDef<Overlay> for FileMenu
         }
     }
 
-    fn process_ui_input<P: Program<B, TS>, B: BlockDevice, TS: TimeSource>(
+    fn process_ui_input(
         &mut self,
-        program: &mut P,
         input: &UIInputEvent,
-    ) -> OverlayResult<Overlay> {
+        program: &mut P,
+    ) -> OverlayResult<'t, D, P, B, TS>
+    where
+        D: 't,
+    {
         match input {
             UIInputEvent::EncoderTurn(v) => {
-                self.selection = (self.selection as i8 + v)
-                    .rem_euclid(Self::OPTIONS.len() as i8)
+                self.selection = (self.selection as i8 + *v)
+                    .rem_euclid(<Self as MenuDef<'t, D, P, B, TS>>::options(self).len() as i8)
                     .try_into()
                     .duwrp();
                 OverlayResult::Nop
             }
-            UIInputEvent::EncoderSwitch(true) => {
-                Self::run(program, &self.selection)
-            }
-            _ => OverlayResult::Nop
+            UIInputEvent::EncoderSwitch(true) => Self::run(program, &self.selection),
+            _ => OverlayResult::Nop,
         }
     }
 }

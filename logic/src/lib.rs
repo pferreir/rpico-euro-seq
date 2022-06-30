@@ -1,15 +1,19 @@
 #![no_std]
+
 #![feature(let_chains)]
 #![feature(generic_associated_types)]
 #![feature(type_alias_impl_trait)]
 #![feature(associated_type_defaults)]
+#![feature(associated_type_bounds)]
 
+extern crate alloc;
+
+pub mod stdlib;
 
 pub mod programs;
 pub mod ui;
 pub mod util;
 pub mod screen;
-pub mod stdlib;
 
 pub enum LogLevel {
     Debug,

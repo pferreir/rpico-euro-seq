@@ -1,9 +1,16 @@
-//! Blinks the LED on a Pico board
-//!
-//! This will blink an LED attached to GP25, which is the pin the Pico uses for the on-board LED.
+#![feature(alloc_error_handler)]
 
 #![no_main]
 #![no_std]
+
+use core::alloc::Layout;
+
+extern crate alloc;
+
+#[alloc_error_handler]
+fn oom(_: Layout) -> ! {
+    loop {}
+}
 
 mod alarms;
 mod debounce;

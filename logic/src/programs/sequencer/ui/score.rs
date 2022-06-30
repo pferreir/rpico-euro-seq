@@ -1,5 +1,5 @@
 use core::{fmt::Debug, cmp::{max, min}};
-use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::*, primitives::{Line, Rectangle, PrimitiveStyleBuilder}};
+use embedded_graphics::{draw_target::DrawTarget, prelude::*, primitives::{Line, Rectangle, PrimitiveStyleBuilder}, pixelcolor::{Rgb555, Rgb565}};
 use embedded_sdmmc::{BlockDevice, TimeSource};
 use voice_lib::{NotePair, NoteFlag};
 
@@ -10,12 +10,8 @@ use super::{NUM_HORIZONTAL_BEATS, NOTE_HEIGHT, NUM_VERTICAL_NOTES, roll::{ROLL_W
 const SCORE_WIDTH: u32 = SCREEN_WIDTH as u32 - ROLL_WIDTH as u32;
 const PIXELS_PER_BEAT: u32 = SCORE_WIDTH / NUM_HORIZONTAL_BEATS;
 
-impl<'t, B: BlockDevice, TS: TimeSource> SequencerProgram<'t, B, TS> {
-    pub(crate) fn _render_screen<D>(&self, screen: &mut D)
-    where
-        D: DrawTarget<Color = Rgb565>,
-        <D as DrawTarget>::Error: Debug,
-    {
+impl<'t, B: BlockDevice, TS: TimeSource,  D: DrawTarget<Color = Rgb565>> SequencerProgram<'t, B, TS, D> where <D as DrawTarget>::Error: Debug {
+    pub(crate) fn _render_screen(&self, screen: &mut D) {
         let (current_time, beat) = self.state.get_time();
         let start_time =
             current_time as i32 - (NUM_HORIZONTAL_BEATS as i32 / 2 * 60_000 / (self.bpm as i32));
@@ -36,13 +32,9 @@ impl<'t, B: BlockDevice, TS: TimeSource> SequencerProgram<'t, B, TS> {
         self.draw_buttons(Point::new(10, 100), screen);
     }
 
-    pub(crate) fn draw_grid<D>(&self, top: i32, start_time: i32, start_beat: u32, screen: &mut D)
-    where
-        D: DrawTarget<Color = Rgb565>,
-        <D as DrawTarget>::Error: Debug,
-    {
+    pub(crate) fn draw_grid(&self, top: i32, start_time: i32, start_beat: u32, screen: &mut D) {
         let mark_style = PrimitiveStyleBuilder::new()
-            .stroke_color(Rgb565::new(12, 24, 9))
+            .stroke_color(Rgb565::BLACK)
             .stroke_width(1)
             .build();
 
@@ -63,7 +55,7 @@ impl<'t, B: BlockDevice, TS: TimeSource> SequencerProgram<'t, B, TS> {
         }
     }
 
-    pub(crate) fn draw_cursor<D>(&self, top: i32, screen: &mut D)
+    pub(crate) fn draw_cursor(&self, top: i32, screen: &mut D)
     where
         D: DrawTarget<Color = Rgb565>,
         <D as DrawTarget>::Error: Debug,
@@ -79,7 +71,7 @@ impl<'t, B: BlockDevice, TS: TimeSource> SequencerProgram<'t, B, TS> {
             .unwrap();
     }
 
-    pub(crate) fn draw_notes<D, I: IntoIterator<Item = (usize, Option<NotePair>, NoteFlag)>>(
+    pub(crate) fn draw_notes<I: IntoIterator<Item = (usize, Option<NotePair>, NoteFlag)>>(
         &self,
         top: i32,
         from_note: u8,
