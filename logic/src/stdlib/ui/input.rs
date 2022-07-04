@@ -10,12 +10,15 @@ use embedded_graphics::{
 use heapless::String;
 use profont::PROFONT_12_POINT;
 
-use super::{select::{Selectable}, DynDrawable};
+use crate::ui::UIInputEvent;
+
+use super::{select::{Selectable, Message}, DynDrawable};
 
 pub struct Input {
     text: &'static str,
     position: Point,
-    selected: bool
+    selected: bool,
+    editing: bool
 }
 
 impl<T: DrawTarget<Color = Rgb565>> DynDrawable<T> for Input {
@@ -68,6 +71,7 @@ impl Input {
         Self {
             text,
             selected: false,
+            editing: false,
             position
         }
     }
@@ -76,9 +80,32 @@ impl Input {
 impl<T: DrawTarget<Color = Rgb565>> Selectable<T> for Input {
     fn set_selected(&mut self, selected: bool) {
         self.selected = selected;
+        self.editing = false;
     }
 
     fn is_selected(&self) -> bool {
         self.selected
+    }
+
+    fn process_ui_input(
+        &mut self,
+        event: &UIInputEvent,
+    ) -> Message {
+        match event {
+            UIInputEvent::EncoderTurn(_) => {
+                // TODO: actual editing of input
+                Message::None
+            },
+            UIInputEvent::EncoderSwitch(true) => {
+                if self.editing {
+                    self.editing = false;
+                    Message::StrInput(self.text)
+                } else {
+                    self.editing = true;
+                    Message::None
+                }
+            },
+            _ => { Message::None }
+        }
     }
 }

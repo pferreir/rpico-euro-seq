@@ -1,14 +1,15 @@
+use core::fmt::Debug;
+
 use alloc::boxed::Box;
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::*, Drawable};
 use embedded_sdmmc::{BlockDevice, TimeSource};
 
 use crate::{
-    log,
-    programs::Program,
+    impl_overlay, log,
+    programs::{Program, SequencerProgram},
     stdlib::ui::{MenuDef, MenuOptions, OverlayResult},
     ui::UIInputEvent,
     util::DiscreetUnwrap,
-    impl_overlay
 };
 
 use super::dialogs::{FileLoadDialog, FileSaveDialog};
@@ -50,15 +51,12 @@ impl TryFrom<i8> for FileMenuOption {
 
 impl MenuOptions for FileMenu {}
 
-impl_overlay!(FileMenu);
+impl_overlay!(FileMenu, SequencerProgram);
 
-impl<
-        't,
-        D: DrawTarget<Color = Rgb565>,
-        P: Program<'t, B, TS, D>,
-        B: BlockDevice,
-        TS: TimeSource,
-    > MenuDef<'t, D, P, B, TS> for FileMenu
+impl<'t, D: DrawTarget<Color = Rgb565>, B: BlockDevice, TS: TimeSource>
+    MenuDef<'t, D, SequencerProgram<'t, B, TS, D>, B, TS> for FileMenu
+where
+    D::Error: Debug,
 {
     type OptionType = FileMenuOption;
 
@@ -84,7 +82,10 @@ impl<
         self.selection == *option
     }
 
-    fn run(program: &mut P, option: &FileMenuOption) -> OverlayResult<'t, D, P, B, TS>
+    fn run(
+        program: &mut SequencerProgram<'t, B, TS, D>,
+        option: &FileMenuOption,
+    ) -> OverlayResult<'t, D, SequencerProgram<'t, B, TS, D>, B, TS>
     where
         D: 't,
     {
@@ -95,7 +96,7 @@ impl<
             }
             FileMenuOption::Save => {
                 log::info("CHOSE 'SAVE'");
-                OverlayResult::Push(Box::new(FileSaveDialog::<D>::default()))
+                OverlayResult::Push(Box::new(FileSaveDialog::default()))
             }
             FileMenuOption::Cancel => {
                 log::info("CHOSE 'CANCEL'");
@@ -107,15 +108,20 @@ impl<
     fn process_ui_input(
         &mut self,
         input: &UIInputEvent,
-        program: &mut P,
-    ) -> OverlayResult<'t, D, P, B, TS>
+        program: &mut SequencerProgram<'t, B, TS, D>,
+    ) -> OverlayResult<'t, D, SequencerProgram<'t, B, TS, D>, B, TS>
     where
         D: 't,
     {
         match input {
             UIInputEvent::EncoderTurn(v) => {
                 self.selection = (self.selection as i8 + *v)
-                    .rem_euclid(<Self as MenuDef<'t, D, P, B, TS>>::options(self).len() as i8)
+                    .rem_euclid(
+                        <Self as MenuDef<'t, D, SequencerProgram<'t, B, TS, D>, B, TS>>::options(
+                            self,
+                        )
+                        .len() as i8,
+                    )
                     .try_into()
                     .duwrp();
                 OverlayResult::Nop

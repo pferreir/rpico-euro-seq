@@ -1,33 +1,59 @@
-use core::{marker::PhantomData, any::Any};
+use core::{any::Any, marker::PhantomData};
 
+use crate::{ui::UIInputEvent, log::info};
 use alloc::{boxed::Box, vec::Vec};
-use embedded_graphics::{draw_target::DrawTarget, prelude::WebColors, Drawable, pixelcolor::Rgb565};
-use super::{Input, Button, DynDrawable};
+use embedded_graphics::{
+    draw_target::DrawTarget, pixelcolor::Rgb565, prelude::WebColors, Drawable,
+};
+
+use super::{button::ButtonId, Button, DynDrawable, Input, OverlayResult};
 
 trait Settings: Default {}
 trait Config: Default {}
 
-pub(crate) trait Selectable<T: DrawTarget<Color = Rgb565>>: DynDrawable<T> {
+pub enum Message<'t> {
+    None,
+    StrInput(&'t str),
+    ButtonPress(Box<dyn ButtonId>),
+}
+
+impl<'t> PartialEq for Message<'t> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Message::None, Message::None) => true,
+            (Message::StrInput(s1), Message::StrInput(s2)) => s1 == s2,
+            (Message::ButtonPress(bid1), Message::ButtonPress(bid2)) => {
+                ButtonId::eq(bid1.as_ref(), bid2.as_ref())
+            }
+            _ => false,
+        }
+    }
+}
+
+pub(crate) trait Selectable<D: DrawTarget<Color = Rgb565>>: DynDrawable<D> {
     fn is_selected(&self) -> bool;
     fn set_selected(&mut self, state: bool);
+    fn process_ui_input(&mut self, input: &UIInputEvent) -> Message;
 }
 
-pub(crate) struct SelectGroup<T: DrawTarget<Color = Rgb565>> {
+pub(crate) struct SelectGroup<D: DrawTarget<Color = Rgb565>> {
     counter: usize,
-    elements: Vec<Box<dyn Selectable<T>>>,
-    selected: usize
+    delegating: bool,
+    elements: Vec<Box<dyn Selectable<D>>>,
+    selected: usize,
 }
 
-impl<T: DrawTarget<Color = Rgb565>> SelectGroup<T> {
+impl<D: DrawTarget<Color = Rgb565>> SelectGroup<D> {
     pub fn new() -> Self {
         Self {
             counter: 0,
+            delegating: false,
             elements: Vec::new(),
-            selected: 0
+            selected: 0,
         }
     }
 
-    pub fn add<S: Selectable<T> + 'static>(&mut self, elem: S) {
+    pub fn add<S: Selectable<D> + 'static>(&mut self, elem: S) {
         self.elements.push(Box::new(elem));
 
         if self.elements.len() == 1 {
@@ -44,10 +70,39 @@ impl<T: DrawTarget<Color = Rgb565>> SelectGroup<T> {
             e.set_selected(n == self.selected as usize);
         }
     }
+
+    pub fn process_ui_input(&mut self, input: &UIInputEvent) -> Message {
+        if self.delegating {
+            let msg = self.elements[self.selected].process_ui_input(input);
+            match msg {
+                Message::None => {},
+                Message::StrInput(_) => {
+                    self.delegating = false;
+                },
+                Message::ButtonPress(_) => {
+                    self.delegating = false;
+                },
+            }
+            msg
+        } else {
+            match input {
+                UIInputEvent::EncoderTurn(v) => {
+                    self.change(*v);
+                    Message::None
+                }
+                UIInputEvent::EncoderSwitch(true) => {
+                    self.delegating = true;
+                    // process event at delegated widget too
+                    self.process_ui_input(input)
+                }
+                _ => Message::None
+            }
+        }
+    }
 }
 
-impl<T: DrawTarget<Color = Rgb565>> DynDrawable<T> for SelectGroup<T> {
-    fn draw(&self, target: &mut T) -> Result<(), T::Error> {
+impl<D: DrawTarget<Color = Rgb565>> DynDrawable<D> for SelectGroup<D> {
+    fn draw(&self, target: &mut D) -> Result<(), D::Error> {
         for elem in self.elements.iter() {
             elem.draw(target)?;
         }

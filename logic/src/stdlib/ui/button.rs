@@ -1,5 +1,6 @@
-use core::{cmp, marker::PhantomData};
+use core::{cmp, marker::PhantomData, any::Any};
 
+use alloc::boxed::Box;
 use embedded_graphics::{
     draw_target::DrawTarget,
     mono_font::MonoTextStyle,
@@ -8,20 +9,33 @@ use embedded_graphics::{
     text::{Text, TextStyleBuilder},
     Drawable, pixelcolor::Rgb565,
 };
+use heapless::String;
 use profont::PROFONT_12_POINT;
+use ufmt::uwrite;
 
-use super::{select::{Selectable}, DynDrawable};
+use crate::{ui::UIInputEvent, log::info};
+
+use super::{select::{Selectable, Message}, DynDrawable};
 
 
 const MIN_BUTTON_WIDTH: u32 = 30;
 
-pub struct Button {
-    text: &'static str,
-    selected: bool,
-    position: Point
+trait ComparableButtonId: PartialEq {}
+
+pub trait ButtonId {
+    fn clone(&self) -> Box<dyn ButtonId>;
+    fn eq(&self, other: &dyn ButtonId) -> bool;
+    fn as_any(&self) -> &dyn Any;
 }
 
-impl<T: DrawTarget<Color = Rgb565>> DynDrawable<T> for Button {
+pub struct Button<ID: ButtonId> {
+    text: &'static str,
+    selected: bool,
+    position: Point,
+    id: ID
+}
+
+impl<T: DrawTarget<Color = Rgb565>, ID: ButtonId> DynDrawable<T> for Button<ID> {
     fn draw(&self, target: &mut T) -> Result<(), T::Error>
     where
         T: DrawTarget<Color = Rgb565>,
@@ -72,22 +86,35 @@ impl<T: DrawTarget<Color = Rgb565>> DynDrawable<T> for Button {
     }
 }
 
-impl Button {
-    pub fn new(text: &'static str, position: Point) -> Self {
+impl<ID: ButtonId> Button<ID> {
+    pub fn new(id: ID, text: &'static str, position: Point) -> Self {
         Self {
             text,
             selected: false,
-            position
+            position,
+            id
         }
     }
 }
 
-impl<T: DrawTarget<Color = Rgb565>> Selectable<T> for Button {
+impl<T: DrawTarget<Color = Rgb565>, ID: ButtonId> Selectable<T> for Button<ID> where
+    ID: 'static
+{
     fn set_selected(&mut self, selected: bool) {
         self.selected = selected;
     }
 
     fn is_selected(&self) -> bool {
         self.selected
+    }
+
+    fn process_ui_input(
+        &mut self,
+        input: &UIInputEvent,
+    ) -> Message {
+        match input {
+            UIInputEvent::EncoderSwitch(true) => Message::ButtonPress(self.id.clone()),
+            _ => Message::None
+        }
     }
 }

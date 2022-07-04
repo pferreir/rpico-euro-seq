@@ -50,7 +50,7 @@ pub trait MenuDef<
 
 #[macro_export]
 macro_rules! impl_overlay {
-    ($t: ident) => {
+    ($t: ident, $p: ident) => {
         use crate::screen::{SCREEN_HEIGHT, SCREEN_WIDTH};
         use crate::stdlib::ui::Overlay;
         use embedded_graphics::{
@@ -63,10 +63,9 @@ macro_rules! impl_overlay {
         impl<
                 't,
                 D: DrawTarget<Color = Rgb565>,
-                P: Program<'t, B, TS, D>,
                 B: BlockDevice,
                 TS: TimeSource,
-            > Overlay<'t, D, P, B, TS> for $t
+            > Overlay<'t, D, $p<'t, B, TS, D>, B, TS> for $t where D::Error: Debug
         {
             fn draw(&self, target: &mut D) -> Result<(), D::Error> {
                 let text_style = MonoTextStyle::new(&PROFONT_14_POINT, Rgb565::WHITE);
@@ -95,11 +94,11 @@ macro_rules! impl_overlay {
 
                 let mut y = 15i32;
 
-                for option in <Self as MenuDef<'t, D, P, _, _>>::options(self) {
-                    let text = <Self as MenuDef<'t, D, P, _, _>>::label(self, option);
+                for option in <Self as MenuDef<'t, D, $p<'t, B, TS, D>, _, _>>::options(self) {
+                    let text = <Self as MenuDef<'t, D, $p<'t, B, TS, D>, _, _>>::label(self, option);
 
                     Rectangle::new(Point::new(15, y), Size::new(SCREEN_WIDTH as u32 - 30, 17))
-                        .into_styled(if <Self as MenuDef<'t, D, P, _, _>>::selected(self, option) {
+                        .into_styled(if <Self as MenuDef<'t, D, $p<'t, B, TS, D>, _, _>>::selected(self, option) {
                             button_style_selected
                         } else {
                             button_style
@@ -108,7 +107,7 @@ macro_rules! impl_overlay {
                     Text::with_alignment(
                         text,
                         Point::new(SCREEN_WIDTH as i32 / 2, y + 13),
-                        if <Self as MenuDef<'t, D, P, _, _>>::selected(self, option) {
+                        if <Self as MenuDef<'t, D, $p<'t, B, TS, D>, _, _>>::selected(self, option) {
                             text_style_selected
                         } else {
                             text_style
@@ -124,12 +123,12 @@ macro_rules! impl_overlay {
             fn process_ui_input(
                 &mut self,
                 input: &UIInputEvent,
-                program: &mut P,
-            ) -> OverlayResult<'t, D, P, B, TS>
+                program: &mut $p<'t, B, TS, D>,
+            ) -> OverlayResult<'t, D, $p<'t, B, TS, D>, B, TS>
             where
                 D: 't,
             {
-                <Self as MenuDef<'t, D, P, B, TS>>::process_ui_input(self, input, program)
+                <Self as MenuDef<'t, D, $p<'t, B, TS, D>, B, TS>>::process_ui_input(self, input, program)
             }
         }
     };

@@ -8,7 +8,7 @@ mod menu;
 use core::any::Any;
 
 use alloc::boxed::Box;
-pub use button::Button;
+pub use button::{Button, ButtonId};
 pub use dialog::{Dialog};
 use embedded_graphics::{prelude::WebColors, draw_target::DrawTarget, Drawable, pixelcolor::{Rgb565}};
 use embedded_sdmmc::{BlockDevice, TimeSource};

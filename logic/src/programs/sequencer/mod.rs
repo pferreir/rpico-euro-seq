@@ -18,7 +18,7 @@ use self::{
 use crate::{
     stdlib::{ui::{OverlayResult, Overlay}, FileSystem},
     ui::UIInputEvent,
-    util::{midi_note_to_lib, DiscreetUnwrap, GateOutput, QueuePoppingIter},
+    util::{midi_note_to_lib, DiscreetUnwrap, GateOutput, QueuePoppingIter}, log::info,
 };
 use voice_lib::NotePair;
 
@@ -77,6 +77,15 @@ pub struct SequencerProgram<'t, B: BlockDevice, TS: TimeSource, D> {
 
     _d: PhantomData<D>
 }
+
+impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>> SequencerProgram<'t, B, TS, D> where
+    <D as DrawTarget>::Error: Debug {
+        fn save(&mut self) {
+            // TODO: actually save something
+            info("SAVING...");
+        }
+}
+
 
 impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>> Program<'t, B, TS, D> for SequencerProgram<'t, B, TS, D> where
     <D as DrawTarget>::Error: Debug
@@ -146,7 +155,9 @@ impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>> Program<
                 OverlayResult::Replace(o) => {
                     self.overlays.push(o);
                 }
-                OverlayResult::Close => {}
+                OverlayResult::Close => {
+                    self.overlays.pop();
+                }
             }
             return;
         }
