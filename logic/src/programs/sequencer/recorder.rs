@@ -5,14 +5,15 @@ use voice_lib::{NoteFlag, NotePair, VoiceTrack};
 
 use crate::log;
 
+use super::data::SequenceFile;
+
 
 const NUM_VOICES: usize = 2;
-const HISTORY_SIZE: usize = 1024;
-const HISTORY_SIZE_DIV_4: usize = 256;
-
+const DEFAULT_SIZE: usize = 16;
 
 pub(crate) struct MonoRecorderBox<'t> {
-    voice_state: VoiceTrack<HISTORY_SIZE, HISTORY_SIZE_DIV_4>,
+    file: SequenceFile,
+    voice_state: VoiceTrack,
     current_note: Vec<NotePair, NUM_VOICES>,
     keys_changed: bool,
     _t: &'t PhantomData<()>,
@@ -21,7 +22,8 @@ pub(crate) struct MonoRecorderBox<'t> {
 impl<'t> MonoRecorderBox<'t> {
     pub(crate) fn new() -> Self {
         Self {
-            voice_state: VoiceTrack::new(),
+            file: SequenceFile::new("default", DEFAULT_SIZE),
+            voice_state: VoiceTrack::new(DEFAULT_SIZE),
             current_note: Vec::new(),
             keys_changed: false,
             _t: &PhantomData,

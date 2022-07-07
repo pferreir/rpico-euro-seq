@@ -1,6 +1,9 @@
 #![no_std]
 
+extern crate alloc;
+
 use core::{fmt, f32::consts::E};
+use alloc::vec::Vec;
 use heapless::String;
 use serde::{Deserialize, Serialize, de::{Visitor, SeqAccess}};
 use ufmt::{derive::uDebug, uDisplay, uWrite, uwrite, Formatter};
@@ -119,13 +122,13 @@ impl Into<u8> for &NotePair {
 }
 
 #[derive(Debug)]
-pub struct VoiceTrack<const N: usize, const M: usize> {
-    notes: [u8; N],
-    flags: [u8; M],
+pub struct VoiceTrack {
+    notes: Vec<u8>,
+    flags: Vec<u8>,
 }
 
-const fn create_array<const N: usize>() -> [u8; N] {
-    let mut array = [0; N];
+fn create_array(len: usize) -> Vec<u8> {
+    let mut array = Vec::from_iter(core::iter::repeat(0).take(len));
     array[0] = 72;
     array[1] = 73;
     array[2] = 71;
@@ -135,15 +138,28 @@ const fn create_array<const N: usize>() -> [u8; N] {
     array
 }
 
-impl<const N: usize, const M: usize> VoiceTrack<N, M> {
-    pub fn new() -> Self {
-        if N != (M * 4) {
-            panic!("N should be equal to 4 times M");
-        }
+impl VoiceTrack {
+    pub fn new(size: usize) -> Self {
+        let notes = create_array(size);
         Self {
-            notes: create_array(),
-            flags: [0u8; M],
+            notes,
+            flags: Vec::from_iter(core::iter::repeat(0x11).take(size / 4)),
         }
+    }
+
+    pub fn resize(&mut self, new_size: usize) {
+        let delta = new_size - self.len();
+        for _ in 0..delta {
+            self.notes.push(0);
+        }
+
+        for _ in 0..(delta / 4) {
+            self.flags.push(0);
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.notes.len()
     }
 
     pub fn set_note(
@@ -173,8 +189,10 @@ impl<const N: usize, const M: usize> VoiceTrack<N, M> {
         t: usize,
         num: usize,
     ) -> impl Iterator<Item = (usize, Option<NotePair>, NoteFlag)> + 't {
-        self.notes[t..(t + num)]
+        self.notes
             .iter()
+            .skip(t)
+            .take(num)
             .enumerate()
             .map(move |(n, e)| {
                 let idx = (t + n) / 4;
@@ -221,22 +239,22 @@ impl From<(Option<NotePair>, NoteFlag)> for NoteState {
     }
 }
 
-impl<const N: usize, const M: usize> Serialize for VoiceTrack<N, M> {
+impl Serialize for VoiceTrack {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         serializer.collect_seq(
-            self.since(0, { N } - 1)
+            self.since(0, self.len() - 1)
                 .map(|(_, np, nf)| -> NoteState { (np, nf).into() }),
         )
     }
 }
 
-struct VoiceTrackVisitor<const N: usize, const M: usize>;
+struct VoiceTrackVisitor;
 
-impl<'de, const N: usize, const M: usize> Visitor<'de> for VoiceTrackVisitor<N, M> {
-    type Value = VoiceTrack<N, M>;
+impl<'de> Visitor<'de> for VoiceTrackVisitor {
+    type Value = VoiceTrack;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("a sequence of note state values")
@@ -246,17 +264,22 @@ impl<'de, const N: usize, const M: usize> Visitor<'de> for VoiceTrackVisitor<N, 
     where
         V: SeqAccess<'de>,
     {
-        let mut vt = VoiceTrack::new();
+        let mut size = 16;
+        let mut vt = VoiceTrack::new(size);
         let mut n = 0;
         while let Some(e) = seq.next_element::<NoteState>()? {
             vt.set_note(n, e.into());
             n += 1;
+
+            if n > size {
+                vt.resize(size * 2);
+            }
         }
         Ok(vt)
     }
 }
 
-impl<'de, const N: usize, const M: usize> Deserialize<'de> for VoiceTrack<N, M> {
+impl<'de> Deserialize<'de> for VoiceTrack {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -289,7 +312,7 @@ mod tests {
 
     #[test]
     fn test_voice_history() {
-        let mut h = VoiceTrack::<10>::new();
+        let mut h = VoiceTrack::<10>::new(16);
         h.start_note(NotePair(Note::D, 2), 10);
 
         assert!(h.content.last() == Some(&(NotePair(Note::D, 2), 10, None)));

@@ -1,5 +1,5 @@
 use core::{any::Any, fmt::Debug};
-use alloc::boxed::Box;
+use alloc::{boxed::Box, string::ToString};
 use embedded_graphics::{
     draw_target::DrawTarget,
     mono_font::MonoTextStyle,
@@ -106,6 +106,7 @@ impl ButtonId for CancelButton {
 }
 
 pub(crate) struct FileSaveDialog<T: DrawTarget<Color = Rgb565>> {
+    file_name: String<12>,
     sg: SelectGroup<T>,
 }
 
@@ -116,7 +117,7 @@ impl<T: DrawTarget<Color = Rgb565>> Default for FileSaveDialog<T> {
         sg.add(Button::<OKButton>::new(OKButton, "OK", Point::new(15, 65)));
         sg.add(Button::<CancelButton>::new(CancelButton, "Cancel", Point::new(60, 65)));
 
-        Self { sg }
+        Self { sg, file_name: "song01".into() }
     }
 }
 
@@ -143,10 +144,14 @@ impl<
                     OverlayResult::Close
                 } else {
                     // OK
-                    program.save();
+                    program.save(&self.file_name);
                     OverlayResult::Close
                 }
             },
+            Message::StrInput(file_name) => {
+                self.file_name = file_name.into();
+                OverlayResult::Nop
+            }
             _ => {
                 OverlayResult::Nop
             }

@@ -16,7 +16,7 @@ use self::{
     },
 };
 use crate::{
-    stdlib::{ui::{OverlayResult, Overlay}, FileSystem},
+    stdlib::{ui::{OverlayResult, Overlay}, FileSystem, DataFile, File, Closed},
     ui::UIInputEvent,
     util::{midi_note_to_lib, DiscreetUnwrap, GateOutput, QueuePoppingIter}, log::info,
 };
@@ -25,6 +25,7 @@ use voice_lib::NotePair;
 use super::{Program, ProgramError};
 
 mod config;
+mod data;
 mod recorder;
 mod ui;
 
@@ -80,9 +81,10 @@ pub struct SequencerProgram<'t, B: BlockDevice, TS: TimeSource, D> {
 
 impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>> SequencerProgram<'t, B, TS, D> where
     <D as DrawTarget>::Error: Debug {
-        fn save(&mut self) {
+        fn save(&mut self, file_name: &str) {
             // TODO: actually save something
-            info("SAVING...");
+            info("SAVING sample file...");
+            DataFile::<Closed>::new(file_name);
         }
 }
 
@@ -97,7 +99,7 @@ impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>> Program<
         q.push(Box::new(FileMenu::default()));
         Self {
             fs,
-            current_note: 72, // C5,
+            current_note: 70, // C5,
             prev_program_time: None,
             program_time: 0,
             bpm: 50,

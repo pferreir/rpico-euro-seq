@@ -1,9 +1,12 @@
 use core::{fmt::Debug, cmp::{max, min}};
 use embedded_graphics::{draw_target::DrawTarget, prelude::*, primitives::{Line, Rectangle, PrimitiveStyleBuilder}, pixelcolor::{Rgb555, Rgb565}};
 use embedded_sdmmc::{BlockDevice, TimeSource};
+use ufmt::uwrite;
 use voice_lib::{NotePair, NoteFlag};
+use heapless::String;
+use crate::util::DiscreetUnwrap;
 
-use crate::{programs::SequencerProgram, screen::SCREEN_WIDTH};
+use crate::{programs::SequencerProgram, screen::SCREEN_WIDTH, log::info};
 
 use super::{NUM_HORIZONTAL_BEATS, NOTE_HEIGHT, NUM_VERTICAL_NOTES, roll::{ROLL_WIDTH, ROLL_HEIGHT, draw_piano_roll}};
 
@@ -19,6 +22,10 @@ impl<'t, B: BlockDevice, TS: TimeSource,  D: DrawTarget<Color = Rgb565>> Sequenc
         screen.clear(Rgb565::CSS_DARK_SLATE_BLUE).unwrap();
         draw_piano_roll(0, self.current_note, screen);
         self.draw_grid(0, start_time, start_beat as u32, screen);
+
+        let mut text = String::<32>::new();
+        uwrite!(text, "ITER SINCE {}", start_beat).duwrp();
+        info(&text);
 
         self.draw_notes(
             0,
@@ -107,6 +114,9 @@ impl<'t, B: BlockDevice, TS: TimeSource,  D: DrawTarget<Color = Rgb565>> Sequenc
                 },
                 NoteFlag::Note | NoteFlag::Legato => {
                     let note: u8 = (&note.unwrap()).into();
+                    let mut text = String::<32>::new();
+                    uwrite!(text, "{} {}", note, flag as u8).duwrp();
+                    info(&text);
                     if (note < from_note) || (note > to_note) {
                         // outside the current view
                         continue;
