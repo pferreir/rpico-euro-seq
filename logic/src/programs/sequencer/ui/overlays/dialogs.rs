@@ -1,5 +1,5 @@
+use alloc::{boxed::Box, string::ToString, format};
 use core::{any::Any, fmt::Debug};
-use alloc::{boxed::Box, string::ToString};
 use embedded_graphics::{
     draw_target::DrawTarget,
     mono_font::MonoTextStyle,
@@ -10,20 +10,22 @@ use embedded_graphics::{
 };
 use embedded_sdmmc::{BlockDevice, TimeSource};
 use heapless::String;
-use profont::{PROFONT_14_POINT};
+use profont::PROFONT_14_POINT;
 
 use crate::{
     programs::{Program, SequencerProgram},
     screen::{SCREEN_HEIGHT, SCREEN_WIDTH},
     stdlib::{
-        ui::{select::{SelectGroup, Message}, Button, Dialog, DynDrawable, Input, Overlay, OverlayResult, ButtonId},
+        ui::{
+            select::{Message, SelectGroup},
+            Button, ButtonId, Dialog, DynDrawable, Input, Overlay, OverlayResult,
+        },
+        SignalId, StdlibError, TaskManager,
     },
-    ui::UIInputEvent,
+    ui::UIInputEvent, log::info,
 };
 
-enum FileLoadAction {
-
-}
+enum FileLoadAction {}
 
 pub(crate) struct FileLoadDialog<T: DrawTarget<Color = Rgb565>> {
     sg: SelectGroup<T>,
@@ -42,16 +44,12 @@ impl<T: DrawTarget<Color = Rgb565>> Default for FileLoadDialog<T> {
 impl<
         't,
         D: DrawTarget<Color = Rgb565>,
-        P: Program<'t, B, TS, D>,
-        B: BlockDevice,
-        TS: TimeSource,
+        P: Program<'t, B, D, TS>,
+        B: BlockDevice + 't,
+        TS: TimeSource + 't,
     > Overlay<'t, D, P, B, TS> for FileLoadDialog<D>
 {
-    fn process_ui_input(
-        &mut self,
-        input: &UIInputEvent,
-        program: &mut P,
-    ) -> OverlayResult<'t, D, P, B, TS>
+    fn process_ui_input(&mut self, input: &UIInputEvent) -> OverlayResult<'t, D, P, B, TS>
     where
         D: 't,
     {
@@ -59,6 +57,15 @@ impl<
     }
 
     fn draw(&self, target: &mut D) -> Result<(), <D as DrawTarget>::Error> {
+        todo!()
+    }
+
+    fn run<'u>(
+        &'u mut self,
+    ) -> Result<
+        Option<Box<dyn FnOnce(&mut P, &mut TaskManager<B, TS>) -> Result<(), StdlibError<B>> + 'u>>,
+        StdlibError<B>,
+    > {
         todo!()
     }
 }
@@ -107,6 +114,7 @@ impl ButtonId for CancelButton {
 
 pub(crate) struct FileSaveDialog<T: DrawTarget<Color = Rgb565>> {
     file_name: String<12>,
+    save: bool,
     sg: SelectGroup<T>,
 }
 
@@ -115,46 +123,47 @@ impl<T: DrawTarget<Color = Rgb565>> Default for FileSaveDialog<T> {
         let mut sg = SelectGroup::new();
         sg.add(Input::new("song01", Point::new(15, 40)));
         sg.add(Button::<OKButton>::new(OKButton, "OK", Point::new(15, 65)));
-        sg.add(Button::<CancelButton>::new(CancelButton, "Cancel", Point::new(60, 65)));
+        sg.add(Button::<CancelButton>::new(
+            CancelButton,
+            "Cancel",
+            Point::new(60, 65),
+        ));
 
-        Self { sg, file_name: "song01".into() }
+        Self {
+            sg,
+            file_name: "song01".into(),
+            save: false,
+        }
     }
 }
 
-impl<
-        't,
-        T: DrawTarget<Color = Rgb565>,
-        B: BlockDevice,
-        TS: TimeSource,
-    > Overlay<'t, T, SequencerProgram<'t, B, TS, T>, B, TS> for FileSaveDialog<T> where
-    T::Error: Debug
+impl<'t, T: DrawTarget<Color = Rgb565> + 't, B: BlockDevice + 't, TS: TimeSource + 't>
+    Overlay<'t, T, SequencerProgram<'t, B, TS, T>, B, TS> for FileSaveDialog<T>
+where
+    T::Error: Debug,
 {
     fn process_ui_input(
         &mut self,
         input: &UIInputEvent,
-        program: &mut SequencerProgram<'t, B, TS, T>,
     ) -> OverlayResult<'t, T, SequencerProgram<'t, B, TS, T>, B, TS>
     where
         T: 't,
     {
-
         match self.sg.process_ui_input(input) {
             Message::ButtonPress(b) => {
                 if b.eq(&CancelButton) {
                     OverlayResult::Close
                 } else {
                     // OK
-                    program.save(&self.file_name);
+                    self.save = true;
                     OverlayResult::Close
                 }
-            },
+            }
             Message::StrInput(file_name) => {
                 self.file_name = file_name.into();
                 OverlayResult::Nop
             }
-            _ => {
-                OverlayResult::Nop
-            }
+            _ => OverlayResult::Nop,
         }
     }
 
@@ -185,5 +194,32 @@ impl<
         self.sg.draw(target)?;
 
         Ok(())
+    }
+
+    fn run<'u>(
+        &'u mut self,
+    ) -> Result<
+        Option<Box<
+            dyn FnOnce(
+                    &mut SequencerProgram<'t, B, TS, T>,
+                    &mut TaskManager<B, TS>,
+                ) -> Result<(), StdlibError<B>>
+                + 'u,
+        >>,
+        StdlibError<B>,
+    > {
+        if self.save {
+            self.save = false;
+            Ok(Some(Box::new(
+                |program: &mut SequencerProgram<'t, B, TS, T>,
+                 task_manager: &mut TaskManager<B, TS>| {
+                    let task = program.save(self.file_name.clone())?;
+                    task_manager.enqueue(task);
+                    Ok(())
+                },
+            )))
+        } else {
+            Ok(None)
+        }
     }
 }

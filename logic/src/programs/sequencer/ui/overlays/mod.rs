@@ -12,21 +12,10 @@ use heapless::String;
 
 use crate::{
     programs::{Program, SequencerProgram},
-    stdlib::ui::OverlayResult,
+    stdlib::{ui::OverlayResult, TaskManager},
     ui::UIInputEvent,
     util::DiscreetUnwrap,
 };
 
 pub(crate) use self::menus::FileMenu;
 
-impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>>
-    SequencerProgram<'t, B, TS, D>
-where
-    <D as DrawTarget>::Error: Debug,
-{
-    pub(crate) fn _draw_overlays(&self, screen: &mut D) {
-        for overlay in self.overlays.iter() {
-            overlay.draw(screen).duwrp();
-        }
-    }
-}

@@ -3,6 +3,7 @@
 
 use core::str;
 use std::future::Future;
+use std::sync::{Arc, Mutex};
 use std::{borrow::Borrow, cell::RefCell, rc::Rc};
 
 use embedded_graphics_web_simulator::{
@@ -11,11 +12,12 @@ use embedded_graphics_web_simulator::{
 use embedded_sdmmc::TimeSource;
 use embedded_sdmmc::{Block, BlockCount, BlockDevice, BlockIdx, Controller, Timestamp};
 use js_sys::{Date, Uint8Array};
-use logic::stdlib::FileSystem;
+use logic::stdlib::{FileSystem, TaskManager};
 use midi_types::MidiMessage;
 use serde::{Deserialize, Serialize};
 use ufmt::{uDebug, uWrite};
 use wasm_bindgen::{prelude::*, JsCast};
+use wasm_bindgen_futures::{future_to_promise, spawn_local};
 use web_sys::OscillatorNode;
 use web_sys::Window;
 use web_sys::{console, RequestMode};
@@ -30,7 +32,7 @@ use logic::{
     screen::{SCREEN_HEIGHT, SCREEN_WIDTH},
     ui::UIInputEvent,
 };
-use voice_lib::NotePair;
+use voice_lib::{InvalidNotePair, NotePair};
 
 #[global_allocator]
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
@@ -96,10 +98,12 @@ struct BrowserOutput {
 
 struct Frequency(f32);
 
-impl From<&NotePair> for Frequency {
-    fn from(np: &NotePair) -> Self {
-        let n: u8 = np.into();
-        Self(440.0 * 2f32.powf((n as f32 - 69.0) / 12.0))
+impl TryFrom<&NotePair> for Frequency {
+    type Error = InvalidNotePair;
+
+    fn try_from(np: &NotePair) -> Result<Self, Self::Error> {
+        let n: u8 = np.try_into()?;
+        Ok(Self(440.0 * 2f32.powf((n as f32 - 69.0) / 12.0)))
     }
 }
 
@@ -171,9 +175,9 @@ struct LocalStorageDevice;
 #[wasm_bindgen(module = "/js/disk.js")]
 extern "C" {
     #[wasm_bindgen(catch)]
-    async fn readFromDisk(start: u32, end: u32) -> Result<JsValue, JsValue>;
+    async unsafe fn readFromDisk(start: u32, end: u32) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(catch)]
-    async fn writeToDisk(start_idx: u32, data: Uint8Array) -> Result<JsValue, JsValue>;
+    async unsafe fn writeToDisk(start_idx: u32, data: Uint8Array) -> Result<JsValue, JsValue>;
 }
 
 impl BlockDevice for LocalStorageDevice {
@@ -250,14 +254,22 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
         .expect("should register `requestAnimationFrame` OK");
 }
 
-fn loop_func<'t, P: Program<'t, B, TS, WebSimulatorDisplay<Rgb565>> + 'static, B: BlockDevice + 't, TS: TimeSource + 't>(
-    mut program: P,
+fn loop_func<
+    't,
+    P: Program<'t, LocalStorageDevice, WebSimulatorDisplay<Rgb565>, JSTime> + 'static,
+>(
+    program: P,
+    fs: FileSystem<LocalStorageDevice, JSTime>,
     mut output: BrowserOutput,
     window: Window,
     mut display: WebSimulatorDisplay<Rgb565>,
 ) {
+    let task_manager = TaskManager::new(fs);
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
+
+    let program = Arc::new(Mutex::new(program));
+    let task_manager = Arc::new(Mutex::new(task_manager));
 
     *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
         // if do_break {
@@ -272,26 +284,42 @@ fn loop_func<'t, P: Program<'t, B, TS, WebSimulatorDisplay<Rgb565>> + 'static, B
             .expect("should have a Performance")
             .now();
 
-        INPUT_QUEUE.with(|vec| {
-            for msg in vec.borrow().iter() {
-                program.process_ui_input(msg);
-            }
-            vec.borrow_mut().clear();
+        {
+            let mut mg = program.lock().unwrap();
+            INPUT_QUEUE.with(|vec| {
+                for msg in vec.borrow().iter() {
+                    mg.process_ui_input(msg).unwrap();
+                }
+                vec.borrow_mut().clear();
+            });
+
+            MIDI_QUEUE.with(|vec| {
+                for msg in vec.borrow().iter() {
+                    mg.process_midi(msg);
+                }
+                vec.borrow_mut().clear();
+            });
+
+            let tm = task_manager.clone();
+            let tmg = tm.lock();
+            mg.run(now.floor() as u32, tmg.unwrap());
+        }
+
+        let pgm = program.clone();
+        let tkm = task_manager.clone();
+        spawn_local(async move {
+            let mut mg_pgm = pgm.lock().unwrap();
+            let mut mg_tkm = tkm.lock().unwrap();
+            mg_tkm.run_tasks(&mut mg_pgm).await;
         });
 
-        MIDI_QUEUE.with(|vec| {
-            for msg in vec.borrow().iter() {
-                program.process_midi(msg);
-            }
-            vec.borrow_mut().clear();
-        });
-
-        program.run(now.floor() as u32);
-
-        display.clear(Rgb565::BLACK).unwrap();
-        program.render_screen(&mut display);
-        display.flush().expect("could not flush buffer");
-        program.update_output(&mut output);
+        {
+            let mut mg = program.lock().unwrap();
+            display.clear(Rgb565::BLACK).unwrap();
+            mg.render_screen(&mut display);
+            display.flush().expect("could not flush buffer");
+            mg.update_output(&mut output);
+        }
 
         let b: &Rc<RefCell<Option<Closure<dyn FnMut()>>>> = f.borrow();
         // Schedule ourself for another requestAnimationFrame callback.
@@ -336,12 +364,8 @@ pub fn midi_new_message(message: &JsValue) {
 pub async fn main_js() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
 
-    let mut program = SequencerProgram::new(
-        FileSystem::new(LocalStorageDevice, JSTime)
-            .await
-            .ok()
-            .unwrap(),
-    );
+    let mut program =
+        SequencerProgram::<LocalStorageDevice, JSTime, WebSimulatorDisplay<Rgb565>>::new();
 
     let window = web_sys::window().unwrap();
     let document = window.document().unwrap();
@@ -359,9 +383,11 @@ pub async fn main_js() -> Result<(), JsValue> {
 
     let output = BrowserOutput::new();
 
-    program.setup().await.unwrap();
+    program.setup();
 
-    loop_func(program, output, window, display);
+    let fs = FileSystem::new(LocalStorageDevice, JSTime).await.unwrap();
+
+    loop_func(program, fs, output, window, display);
 
     Ok(())
 }

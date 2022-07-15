@@ -1,19 +1,34 @@
-use core::{fmt::Debug, cmp::{max, min}};
-use embedded_graphics::{draw_target::DrawTarget, prelude::*, primitives::{Line, Rectangle, PrimitiveStyleBuilder}, pixelcolor::{Rgb555, Rgb565}};
-use embedded_sdmmc::{BlockDevice, TimeSource};
-use ufmt::uwrite;
-use voice_lib::{NotePair, NoteFlag};
-use heapless::String;
 use crate::util::DiscreetUnwrap;
+use core::{
+    cmp::{max, min},
+    fmt::Debug,
+};
+use embedded_graphics::{
+    draw_target::DrawTarget,
+    pixelcolor::Rgb565,
+    prelude::*,
+    primitives::{Line, PrimitiveStyleBuilder, Rectangle},
+};
+use embedded_sdmmc::{BlockDevice, TimeSource};
+use heapless::String;
+use ufmt::uwrite;
+use voice_lib::{NoteFlag, NotePair};
 
-use crate::{programs::SequencerProgram, screen::SCREEN_WIDTH, log::info};
+use crate::{log::info, programs::SequencerProgram, screen::SCREEN_WIDTH};
 
-use super::{NUM_HORIZONTAL_BEATS, NOTE_HEIGHT, NUM_VERTICAL_NOTES, roll::{ROLL_WIDTH, ROLL_HEIGHT, draw_piano_roll}};
+use super::{
+    roll::{draw_piano_roll, ROLL_HEIGHT, ROLL_WIDTH},
+    NOTE_HEIGHT, NUM_HORIZONTAL_BEATS, NUM_VERTICAL_NOTES,
+};
 
 const SCORE_WIDTH: u32 = SCREEN_WIDTH as u32 - ROLL_WIDTH as u32;
 const PIXELS_PER_BEAT: u32 = SCORE_WIDTH / NUM_HORIZONTAL_BEATS;
 
-impl<'t, B: BlockDevice, TS: TimeSource,  D: DrawTarget<Color = Rgb565>> SequencerProgram<'t, B, TS, D> where <D as DrawTarget>::Error: Debug {
+impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>>
+    SequencerProgram<'t, B, TS, D>
+where
+    <D as DrawTarget>::Error: Debug,
+{
     pub(crate) fn _render_screen(&self, screen: &mut D) {
         let (current_time, beat) = self.state.get_time();
         let start_time =
@@ -41,7 +56,7 @@ impl<'t, B: BlockDevice, TS: TimeSource,  D: DrawTarget<Color = Rgb565>> Sequenc
 
     pub(crate) fn draw_grid(&self, top: i32, start_time: i32, start_beat: u32, screen: &mut D) {
         let mark_style = PrimitiveStyleBuilder::new()
-            .stroke_color(Rgb565::BLACK)
+            .stroke_color(Rgb565::CSS_DARK_GRAY)
             .stroke_width(1)
             .build();
 
@@ -78,7 +93,9 @@ impl<'t, B: BlockDevice, TS: TimeSource,  D: DrawTarget<Color = Rgb565>> Sequenc
             .unwrap();
     }
 
-    pub(crate) fn draw_notes<I: IntoIterator<Item = (usize, Option<NotePair>, NoteFlag)>>(
+    pub(crate) fn draw_notes<
+        I: IntoIterator<Item = (usize, Option<(Option<NotePair>, NoteFlag)>)>,
+    >(
         &self,
         top: i32,
         from_note: u8,
@@ -95,12 +112,16 @@ impl<'t, B: BlockDevice, TS: TimeSource,  D: DrawTarget<Color = Rgb565>> Sequenc
             .fill_color(Rgb565::BLUE)
             .build();
 
-        for (beat, note, flag) in slots.into_iter() {
+        for (beat, (note, flag)) in slots
+            .into_iter()
+            .filter(|(_, s)| s.is_some())
+            .map(|(n, v)| (n, v.unwrap()))
+        {
             let beat_t = (beat as u32) * 60_000 / self.bpm as u32;
 
             let start_x =
-            max(0, beat_t as i32 - start_time) as u32 * self.bpm as u32 * PIXELS_PER_BEAT
-                / 60_000;
+                max(0, beat_t as i32 - start_time) as u32 * self.bpm as u32 * PIXELS_PER_BEAT
+                    / 60_000;
             let next_beat_t = beat_t as i32 + 60_000 / self.bpm as i32;
             let end_x = min(
                 SCORE_WIDTH - 1,
@@ -111,18 +132,16 @@ impl<'t, B: BlockDevice, TS: TimeSource,  D: DrawTarget<Color = Rgb565>> Sequenc
                 NoteFlag::None => {
                     // no note
                     continue;
-                },
+                }
                 NoteFlag::Note | NoteFlag::Legato => {
-                    let note: u8 = (&note.unwrap()).into();
-                    let mut text = String::<32>::new();
-                    uwrite!(text, "{} {}", note, flag as u8).duwrp();
-                    info(&text);
+                    let note: u8 = (&note.unwrap()).try_into().duwrp();
                     if (note < from_note) || (note > to_note) {
                         // outside the current view
                         continue;
                     }
 
-                    let y = top + (NUM_VERTICAL_NOTES - 1 - (note - from_note) as i32) * NOTE_HEIGHT;
+                    let y =
+                        top + (NUM_VERTICAL_NOTES - 1 - (note - from_note) as i32) * NOTE_HEIGHT;
 
                     if end_x > start_x {
                         Rectangle::new(
@@ -133,7 +152,7 @@ impl<'t, B: BlockDevice, TS: TimeSource,  D: DrawTarget<Color = Rgb565>> Sequenc
                         .draw(screen)
                         .unwrap();
                     }
-                },
+                }
             }
         }
     }

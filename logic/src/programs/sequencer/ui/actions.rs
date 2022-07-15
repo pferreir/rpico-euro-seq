@@ -1,3 +1,5 @@
+use core::fmt::Debug;
+
 use embedded_graphics::{
     draw_target::DrawTarget,
     image::Image,
@@ -57,7 +59,9 @@ impl From<u8> for UIAction {
     }
 }
 
-impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>> SequencerProgram<'t, B, TS, D> {
+impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>> SequencerProgram<'t, B, TS, D> where
+    <D as DrawTarget>::Error: Debug,
+{
     pub(crate) fn draw_buttons(&self, pos: Point, screen: &mut D)
     where
         D: DrawTarget<Color = Rgb565>,

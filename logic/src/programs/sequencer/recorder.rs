@@ -1,9 +1,11 @@
 use core::marker::PhantomData;
+use alloc::boxed::Box;
+use embedded_sdmmc::{BlockDevice, TimeSource};
 use heapless::{spsc::Queue, String, Vec};
 use ufmt::uwrite;
 use voice_lib::{NoteFlag, NotePair, VoiceTrack};
 
-use crate::log;
+use crate::{log, util::DiscreetUnwrap, stdlib::{StdlibError, FileSystem, SignalId, TaskManager, Task}};
 
 use super::data::SequenceFile;
 
@@ -13,7 +15,7 @@ const DEFAULT_SIZE: usize = 16;
 
 pub(crate) struct MonoRecorderBox<'t> {
     file: SequenceFile,
-    voice_state: VoiceTrack,
+    pub voice_state: VoiceTrack,
     current_note: Vec<NotePair, NUM_VOICES>,
     keys_changed: bool,
     _t: &'t PhantomData<()>,
@@ -22,7 +24,7 @@ pub(crate) struct MonoRecorderBox<'t> {
 impl<'t> MonoRecorderBox<'t> {
     pub(crate) fn new() -> Self {
         Self {
-            file: SequenceFile::new("default", DEFAULT_SIZE),
+            file: SequenceFile::new("default"),
             voice_state: VoiceTrack::new(DEFAULT_SIZE),
             current_note: Vec::new(),
             keys_changed: false,
@@ -36,7 +38,7 @@ impl<'t> MonoRecorderBox<'t> {
 
     pub(crate) fn key_pressed(&mut self, beat: usize, n: NotePair) {
         self.current_note.push(n).unwrap();
-        self.voice_state.set_note(beat, (Some(n), NoteFlag::Note));
+        self.voice_state.set_note(beat, (Some(n), NoteFlag::Note)).duwrp();
         self.keys_changed = true;
         let mut text = String::<32>::new();
         uwrite!(text, "KEY PRESS {}: {:?}", beat, n).unwrap();
@@ -55,13 +57,13 @@ impl<'t> MonoRecorderBox<'t> {
 
     pub(crate) fn beat(&mut self, beat: usize) {
         if !self.keys_changed && let Some(n) = self.current_note.last() {
-            self.voice_state.set_note(beat, (Some(*n), NoteFlag::Legato));
+            self.voice_state.set_note(beat, (Some(*n), NoteFlag::Legato)).duwrp();
         }
 
         // initialize already next note if there is at least a pressed one
         if let Some(n) = self.current_note.last() {
             self.voice_state
-                .set_note(beat + 1, (Some(*n), NoteFlag::Legato));
+                .set_note(beat + 1, (Some(*n), NoteFlag::Legato)).duwrp();
         }
         self.keys_changed = false;
     }
@@ -70,7 +72,15 @@ impl<'t> MonoRecorderBox<'t> {
         &'t self,
         t: usize,
         num: usize,
-    ) -> impl Iterator<Item = (usize, Option<NotePair>, NoteFlag)> + 't {
+    ) -> impl Iterator<Item = (usize, Option<(Option<NotePair>, NoteFlag)>)> + 't {
         self.voice_state.since(t, num)
+    }
+
+    pub(crate) fn set_file_name(&mut self, file_name: &String<12>) {
+        self.file.set_name(file_name);
+    }
+
+    pub(crate) fn save_file<B: BlockDevice, TS: TimeSource>(&mut self) -> Result<Task, StdlibError<B>> {
+        Ok(self.file.save()?)
     }
 }

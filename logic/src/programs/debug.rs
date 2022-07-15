@@ -1,4 +1,4 @@
-use core::{fmt::Debug, future::Future};
+use core::{fmt::Debug, future::Future, ops::DerefMut};
 use embedded_graphics::{
     draw_target::DrawTarget,
     mono_font::{ascii::FONT_10X20, MonoTextStyle},
@@ -12,7 +12,7 @@ use embedded_sdmmc::{BlockDevice, TimeSource};
 use heapless::{spsc::Queue, String};
 use ufmt::uwrite;
 
-use crate::{stdlib::FileSystem, ui::UIInputEvent};
+use crate::{stdlib::{FileSystem, TaskManager}, ui::UIInputEvent};
 
 use super::{Program, ProgramError};
 
@@ -20,8 +20,7 @@ extern "C" {
     static _stack_start: u32;
 }
 
-pub struct DebugProgram<B: BlockDevice, TS: TimeSource> {
-    fs: FileSystem<B, TS>,
+pub struct DebugProgram {
     messages: Queue<MidiMessage, 5>,
     fps: u8,
     encoder_pos: i8,
@@ -33,16 +32,12 @@ pub struct DebugProgram<B: BlockDevice, TS: TimeSource> {
     frame_counter: u8,
 }
 
-impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>> Program<'t, B, TS, D>
-    for DebugProgram<B, TS>
+impl<'t, B: BlockDevice + 't, D: DrawTarget<Color = Rgb565> + 't, TS: TimeSource + 't> Program<'t, B, D, TS> for DebugProgram
 where
     <D as DrawTarget>::Error: Debug,
 {
-    type SetupFuture<'a> = impl Future<Output = Result<(), ProgramError<B>>> + 'a where Self: 'a, 't: 'a, TS: 't, B: 't, D: 't, <D as DrawTarget>::Error: Debug;
-
-    fn new(fs: FileSystem<B, TS>) -> Self {
+    fn new() -> Self {
         Self {
-            fs,
             messages: Queue::new(),
             mem_usage: 0,
             fps: 0,
@@ -54,7 +49,39 @@ where
             frame_counter: 0,
         }
     }
-    fn render_screen(&self, screen: &mut D) {
+    fn process_midi(&mut self, msg: &MidiMessage) {
+        match self.messages.enqueue(msg.clone()) {
+            Ok(()) => {}
+            Err(rej_msg) => {
+                self.messages.dequeue();
+                unsafe { self.messages.enqueue_unchecked(rej_msg) };
+            }
+        }
+    }
+
+    fn process_ui_input<'u>(&mut self, msg: &'u UIInputEvent) -> Result<(), ProgramError<B>>
+    where
+        't: 'u,
+        <D as DrawTarget>::Error: Debug,
+    {
+        match msg {
+            UIInputEvent::EncoderTurn(n) => {
+                self.encoder_pos += n;
+            }
+            UIInputEvent::EncoderSwitch(v) => {
+                self.encoder_sw_state = *v;
+            }
+            UIInputEvent::Switch1(v) => {
+                self.sw1_state = *v;
+            }
+            UIInputEvent::Switch2(v) => {
+                self.sw2_state = *v;
+            }
+        }
+        Ok(())
+    }
+
+    fn render_screen(&mut self, screen: &mut D) {
         let STYLE_YELLOW = MonoTextStyle::new(&FONT_10X20, Rgb565::YELLOW);
         let STYLE_RED = MonoTextStyle::new(&FONT_10X20, Rgb565::RED);
         let STYLE_CYAN = MonoTextStyle::new(&FONT_10X20, Rgb565::CYAN);
@@ -134,41 +161,10 @@ where
             .unwrap();
     }
 
-    fn process_midi(&mut self, msg: &MidiMessage) {
-        match self.messages.enqueue(msg.clone()) {
-            Ok(()) => {}
-            Err(rej_msg) => {
-                self.messages.dequeue();
-                unsafe { self.messages.enqueue_unchecked(rej_msg) };
-            }
-        }
+    fn setup(&mut self) {
     }
 
-    fn process_ui_input(&mut self, msg: &UIInputEvent) where TS: 't, B: 't, D: 't {
-        match msg {
-            UIInputEvent::EncoderTurn(n) => {
-                self.encoder_pos += n;
-            }
-            UIInputEvent::EncoderSwitch(v) => {
-                self.encoder_sw_state = *v;
-            }
-            UIInputEvent::Switch1(v) => {
-                self.sw1_state = *v;
-            }
-            UIInputEvent::Switch2(v) => {
-                self.sw2_state = *v;
-            }
-        }
-    }
-
-    fn setup<'u>(&'u mut self) -> Self::SetupFuture<'u>
-    where
-        't: 'u,
-    {
-        async { Ok(()) }
-    }
-
-    fn run(&mut self, program_time: u32) {
+    fn run<'u>(&mut self, program_time: u32, _task_manager: impl DerefMut<Target = TaskManager<B, TS>> + 'u) {
         let diff = program_time - self.last_tick;
         if diff >= 1_000u32 {
             self.fps = (self.frame_counter as u32 * 1_000 / diff) as u8;

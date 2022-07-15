@@ -1,38 +1,30 @@
-use core::{fmt::Debug, future::Future};
-use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::WebColors};
-use embedded_midi::MidiMessage;
-
 mod sequencer;
 mod debug;
 
+use core::{fmt::Debug, future::Future, ops::{Deref, DerefMut}, pin::Pin};
+use alloc::{vec::Vec, boxed::Box, collections::BTreeMap};
+use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::WebColors};
+use embedded_midi::MidiMessage;
 use embedded_sdmmc::{TimeSource, BlockDevice};
 pub use sequencer::SequencerProgram;
 pub use debug::DebugProgram;
 use voice_lib::NotePair;
 
-use crate::{ui::UIInputEvent, util::{GateOutput}, stdlib::{FileSystem, StdlibError}};
+use crate::{ui::UIInputEvent, util::{GateOutput}, stdlib::{FileSystem, StdlibError, SignalId, TaskManager}};
 
 #[derive(Debug)]
 pub enum ProgramError<D: BlockDevice> {
     Stdlib(StdlibError<D>)
 }
 
-pub trait Program<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>> {
-    type SetupFuture<'a>: Future<Output = Result<(), ProgramError<B>>> + 'a
-    where
-        Self: 'a,
-        Self: 't,
-        't: 'a,
-        D: 't,
-        <D as DrawTarget>::Error: Debug;
-
-    fn new(fs: FileSystem<B, TS>) -> Self;
+pub trait Program<'t, B: BlockDevice + 't, D: DrawTarget<Color = Rgb565>, TS: TimeSource + 't> {
+    fn new() -> Self;
     fn process_midi(&mut self, msg: &MidiMessage) {}
-    fn process_ui_input(&mut self, msg: &UIInputEvent) where TS: 't, B: 't, D: 't {}
+    fn process_ui_input<'u>(&'u mut self, msg: &'u UIInputEvent) -> Result<(), ProgramError<B>> where 't: 'u, <D as DrawTarget>::Error: Debug;
 
-    fn render_screen(&self, screen: &mut D);
-    fn update_output<'u, 'v, T: From<&'u NotePair>>(&'v self, output: &mut impl GateOutput<'u, T>) where
+    fn render_screen(&mut self, screen: &mut D);
+    fn update_output<'u, 'v, T: TryFrom<&'u NotePair>>(&'v self, output: &mut impl GateOutput<'u, T>) where
     'v: 'u {}
-    fn setup<'u>(&'u mut self) -> Self::SetupFuture<'u> where 't: 'u, <D as DrawTarget>::Error: Debug;
-    fn run(&mut self, program_time: u32);
+    fn setup(&mut self);
+    fn run<'u>(&mut self, program_time: u32, task_manager: impl DerefMut<Target = TaskManager<B, TS>> + 'u);
 }

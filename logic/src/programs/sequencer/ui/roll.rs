@@ -50,6 +50,7 @@ where
         .into_styled(mark_style)
         .draw(screen)
         .duwrp();
+
         Line::new(
             Point::new(
                 ROLL_WIDTH + 1,

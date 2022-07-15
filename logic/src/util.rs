@@ -3,7 +3,7 @@ use core::fmt::Debug;
 use core::str;
 use embedded_midi::Note as MidiNote;
 use heapless::spsc::Queue;
-use voice_lib::NotePair;
+use voice_lib::{NotePair, InvalidNotePair};
 
 const MIDI_NOTE_0V: u16 = 36;
 
@@ -40,13 +40,15 @@ impl From<DACVoltage> for u16 {
     }
 }
 
-impl From<&NotePair> for DACVoltage {
-    fn from(np: &NotePair) -> Self {
-        let semitones: u8 = np.into();
-        DACVoltage((1000 * ((semitones.max(0) as u16).saturating_sub(MIDI_NOTE_0V)) / 12) & 0xfff)
+impl TryFrom<&NotePair> for DACVoltage {
+    type Error = InvalidNotePair;
+
+    fn try_from(value: &NotePair) -> Result<Self, Self::Error> {
+        let semitones: u8 = value.try_into()?;
+        Ok(DACVoltage((1000 * ((semitones.max(0) as u16).saturating_sub(MIDI_NOTE_0V)) / 12) & 0xfff))
     }
 }
-pub trait GateOutput<'t, T: From<&'t NotePair>> {
+pub trait GateOutput<'t, T: TryFrom<&'t NotePair>> {
     fn set_ch0(&mut self, val: T);
     fn set_ch1(&mut self, val: T);
     fn set_gate0(&mut self, val: bool);

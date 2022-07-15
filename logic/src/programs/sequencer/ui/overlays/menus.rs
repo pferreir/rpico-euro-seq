@@ -53,7 +53,7 @@ impl MenuOptions for FileMenu {}
 
 impl_overlay!(FileMenu, SequencerProgram);
 
-impl<'t, D: DrawTarget<Color = Rgb565>, B: BlockDevice, TS: TimeSource>
+impl<'t, D: DrawTarget<Color = Rgb565> + 't, B: BlockDevice + 't, TS: TimeSource + 't>
     MenuDef<'t, D, SequencerProgram<'t, B, TS, D>, B, TS> for FileMenu
 where
     D::Error: Debug,
@@ -82,8 +82,7 @@ where
         self.selection == *option
     }
 
-    fn run(
-        program: &mut SequencerProgram<'t, B, TS, D>,
+    fn run_choice(
         option: &FileMenuOption,
     ) -> OverlayResult<'t, D, SequencerProgram<'t, B, TS, D>, B, TS>
     where
@@ -108,7 +107,6 @@ where
     fn process_ui_input(
         &mut self,
         input: &UIInputEvent,
-        program: &mut SequencerProgram<'t, B, TS, D>,
     ) -> OverlayResult<'t, D, SequencerProgram<'t, B, TS, D>, B, TS>
     where
         D: 't,
@@ -126,7 +124,7 @@ where
                     .duwrp();
                 OverlayResult::Nop
             }
-            UIInputEvent::EncoderSwitch(true) => Self::run(program, &self.selection),
+            UIInputEvent::EncoderSwitch(true) => Self::run_choice(&self.selection),
             _ => OverlayResult::Nop,
         }
     }

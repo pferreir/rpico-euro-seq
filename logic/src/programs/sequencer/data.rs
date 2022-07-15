@@ -1,29 +1,35 @@
+use alloc::boxed::Box;
 use embedded_sdmmc::{BlockDevice, TimeSource};
 use heapless::String;
 use serde::{Serialize, Deserialize};
+use rmp_serde::Serializer as RMPSerializer;
 use ufmt::uwrite;
-use voice_lib::VoiceTrack;
 
-use crate::{util::DiscreetUnwrap, stdlib::{StdlibErrorFileWrapper, Closed}};
+use crate::{util::DiscreetUnwrap, stdlib::{StdlibErrorFileWrapper, Closed, Task}};
 use crate::stdlib::{FileSystem, StdlibError, DataFile, File};
+
+const FILE_BUFFER_SIZE: usize = 10240;
 
 #[derive(Serialize, Deserialize)]
 pub(super) struct SequenceFile {
-    seq_name: String<8>,
-    track: VoiceTrack
+    seq_name: String<8>
 }
 
 
 impl SequenceFile {
 
-    pub(crate) fn new(seq_name: &str, size: usize) -> Self {
-        Self { seq_name: seq_name.into(), track: VoiceTrack::new(size) }
+    pub(crate) fn new(seq_name: &str) -> Self {
+        Self { seq_name: seq_name.into() }
     }
 
     fn _load_data_file(&self) -> DataFile<Closed> {
         let mut tmp = String::<12>::new();
         uwrite!(tmp, "{}.seq", &self.seq_name as &str).duwrp();
         DataFile::new(&tmp)
+    }
+
+    pub(crate) fn set_name(&mut self, file_name: &str) {
+        self.seq_name = file_name.into();
     }
 
     pub(crate) async fn load<D: BlockDevice, TS: TimeSource>(
@@ -43,21 +49,17 @@ impl SequenceFile {
         }
     }
 
-    pub(crate) async fn save<D: BlockDevice, TS: TimeSource>(
+    pub(crate) fn save<D: BlockDevice>(
         &self,
-        fs: &mut FileSystem<D, TS>,
-    ) -> Result<(), StdlibError<D>> {
-        let df = self._load_data_file();
-        match df.open_write(fs, true).await {
-            Ok(mut f) => {
-                f.dump(fs, self).await?;
-                f.close(fs)?;
-                Ok(())
-            },
-            Err(StdlibErrorFileWrapper(e, _)) => {
-                Err(e)
-            },
-        }
+    ) -> Result<Task, StdlibError<D>> {
+        let mut buffer = [0u8; FILE_BUFFER_SIZE];
+        let mut ser = RMPSerializer::new(&mut buffer[..]);
+        self.serialize(&mut ser).map_err(StdlibError::<D>::Serialization)?;
+
+        let mut file_name = String::<12>::new();
+        uwrite!(file_name, "{}.seq", &self.seq_name as &str).duwrp();
+
+        Ok(Task::FileSave(file_name, Box::new(buffer)))
     }
 
 }

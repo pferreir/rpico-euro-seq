@@ -51,7 +51,7 @@ use hal::{
 };
 
 use logic::{
-    programs::{self, Program},
+    programs::{self, Program, TaskManager},
     LogLevel,
 };
 use screen::{Framebuffer, ScreenDriverWithPins};
@@ -83,6 +83,7 @@ async fn main_loop(
     delay: &mut cortex_m::delay::Delay,
 ) -> ! {
     let buffer_addr = unsafe { scr.buffer_addr() };
+    let task_manager = TaskManager::new();
 
     program.setup().await;
 
@@ -97,7 +98,7 @@ async fn main_loop(
         free(|cs| {
             if let Some(encoder) = encoder::ROTARY_ENCODER.borrow(cs).borrow_mut().deref_mut() {
                 for msg in encoder.iter_messages() {
-                    program.process_ui_input(&msg);
+                    program.process_ui_input(&msg, &mut task_manager);
                     // let mut s = String::<32>::new();
                     // uwrite!(s, "{:#?}", msg);
                     // info!("{}", s);
@@ -122,6 +123,8 @@ async fn main_loop(
         });
 
         program.run(prog_time);
+
+        task_manager.run_tasks().await;
 
         scr.clear(Rgb565::BLACK).unwrap();
         // scr.clear(Rgb565::new(((prog_time * 23) % 255) as u8, (prog_time % 255) as u8, ((prog_time * 31) % 255) as u8)).unwrap();
