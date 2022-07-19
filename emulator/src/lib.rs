@@ -310,7 +310,7 @@ fn loop_func<
         spawn_local(async move {
             let mut mg_pgm = pgm.lock().unwrap();
             let mut mg_tkm = tkm.lock().unwrap();
-            mg_tkm.run_tasks(&mut mg_pgm).await;
+            mg_tkm.run_tasks(mg_pgm).await;
         });
 
         {

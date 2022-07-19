@@ -2,8 +2,8 @@ use alloc::boxed::Box;
 use embedded_sdmmc::{BlockDevice, TimeSource};
 use heapless::String;
 use serde::{Serialize, Deserialize};
-use rmp_serde::Serializer as RMPSerializer;
 use ufmt::uwrite;
+use ciborium::ser::into_writer;
 
 use crate::{util::DiscreetUnwrap, stdlib::{StdlibErrorFileWrapper, Closed, Task}};
 use crate::stdlib::{FileSystem, StdlibError, DataFile, File};
@@ -53,8 +53,7 @@ impl SequenceFile {
         &self,
     ) -> Result<Task, StdlibError<D>> {
         let mut buffer = [0u8; FILE_BUFFER_SIZE];
-        let mut ser = RMPSerializer::new(&mut buffer[..]);
-        self.serialize(&mut ser).map_err(StdlibError::<D>::Serialization)?;
+        into_writer(self, &mut buffer[..]).map_err(StdlibError::<D>::Serialization)?;
 
         let mut file_name = String::<12>::new();
         uwrite!(file_name, "{}.seq", &self.seq_name as &str).duwrp();

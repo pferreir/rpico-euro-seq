@@ -1,6 +1,7 @@
 use embedded_sdmmc::{Error as ESDMMCError, BlockDevice};
 use heapless::String;
-use rmp_serde::{decode::Error as RMPDeserializerError, encode::Error as RMPSerializerError};
+use ciborium::{de::Error as CBORDeserializerError, ser::Error as CBORSerializerError};
+use ciborium_io::{OutOfSpace, EndOfFile};
 use ufmt::{uDisplay, Formatter, uWrite, uwrite};
 use core::{
     fmt::Debug
@@ -12,8 +13,8 @@ pub struct StdlibErrorFileWrapper<D: BlockDevice, F: File<Closed>>(pub StdlibErr
 
 pub enum StdlibError<D: BlockDevice> {
     Device(ESDMMCError<<D as BlockDevice>::Error>),
-    Serialization(RMPSerializerError),
-    Deserialization(RMPDeserializerError),
+    Serialization(CBORSerializerError<OutOfSpace>),
+    Deserialization(CBORDeserializerError<EndOfFile>),
 }
 
 impl<D: BlockDevice> uDisplay for StdlibError<D> {

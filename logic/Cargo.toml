@@ -14,7 +14,8 @@ tinybmp = "^0.3"
 embedded-midi = "^0.1"
 embedded-sdmmc = { path = "../embedded-sdmmc-rs" }
 voice_lib = { path = "../voice_lib" }
-serde = { version = "^1.0", default-features = false, features = [] }
-rmp-serde = "^1.1"
+serde = { version = "^1.0", default-features = false, features = ["derive", "alloc"] }
 ufmt = "^0.1"
 alloc-cortex-m = { version = "^0.4", optional = true }
+ciborium = {version = "^0.2", default-features = false, features = [] }
+ciborium-io = {version = "^0.2"}

@@ -33,7 +33,7 @@ impl<'t, B: BlockDevice + 't, TS: TimeSource + 't> TaskManager<B, TS> {
         SignalId(id)
     }
 
-    pub async fn run_tasks<'u, D: DrawTarget<Color = Rgb565>, P: Program<'u, B, D, TS>, PM: DerefMut<Target = P>>(&mut self, program: &mut PM)
+    pub async fn run_tasks<'u, D: DrawTarget<Color = Rgb565>, P: Program<'u, B, D, TS>, PM: DerefMut<Target = P>>(&mut self, program: PM)
         where B: 'u, TS: 'u
     {
 

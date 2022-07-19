@@ -1,14 +1,14 @@
+use ciborium::{ser::into_writer, de::from_reader};
 use core::{marker::PhantomData, str};
 use embedded_sdmmc::{
-    BlockDevice, Controller, Directory, File as FATFile, Mode, ShortFileName,
-    TimeSource, Volume, VolumeIdx,
+    BlockDevice, Controller, Directory, File as FATFile, Mode, ShortFileName, TimeSource, Volume,
+    VolumeIdx,
 };
 use heapless::{String, Vec};
-use rmp_serde::Serializer as RMPSerializer;
 use serde::{self, de::DeserializeOwned, Deserialize, Serialize};
 use ufmt::{uDisplay, uWrite, uwrite, Formatter};
 
-use super::{StdlibError ,StdlibErrorFileWrapper};
+use super::{StdlibError, StdlibErrorFileWrapper};
 
 struct FileNameWrapper<'a>(&'a ShortFileName);
 
@@ -281,9 +281,7 @@ macro_rules! file_impl {
                 data: &S,
             ) -> Result<(), StdlibError<D>> {
                 let mut buffer = [0u8; FILE_BUFFER_SIZE];
-                let mut ser = RMPSerializer::new(&mut buffer[..]);
-                data.serialize(&mut ser)
-                    .map_err(StdlibError::<D>::Serialization)?;
+                into_writer(data, &mut buffer[..]).map_err(StdlibError::<D>::Serialization)?;
                 fs.controller
                     .write(&mut fs.volume, self.handle_mut().unwrap(), &buffer)
                     .await
@@ -295,7 +293,9 @@ macro_rules! file_impl {
                 &mut self,
                 fs: &mut FileSystem<D, TS>,
             ) -> Result<(), StdlibError<D>> {
-                fs.controller.close_file(&mut fs.volume, self.handle.take().unwrap()).map_err(StdlibError::Device)?;
+                fs.controller
+                    .close_file(&mut fs.volume, self.handle.take().unwrap())
+                    .map_err(StdlibError::Device)?;
                 Ok(())
             }
         }
@@ -310,7 +310,7 @@ macro_rules! file_impl {
                     .read(&fs.volume, self.handle_mut().unwrap(), &mut buffer)
                     .await
                     .map_err(StdlibError::<D>::Device)?;
-                let res: Result<DS, _> = rmp_serde::from_slice(&buffer);
+                let res: Result<DS, _> = from_reader(&buffer[..]);
                 Ok(res.map_err(StdlibError::Deserialization)?)
             }
 
@@ -318,7 +318,9 @@ macro_rules! file_impl {
                 &mut self,
                 fs: &mut FileSystem<D, TS>,
             ) -> Result<(), StdlibError<D>> {
-                fs.controller.close_file(&mut fs.volume, self.handle.take().unwrap()).map_err(StdlibError::Device)?;
+                fs.controller
+                    .close_file(&mut fs.volume, self.handle.take().unwrap())
+                    .map_err(StdlibError::Device)?;
                 Ok(())
             }
         }
