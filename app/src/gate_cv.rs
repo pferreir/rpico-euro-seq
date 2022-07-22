@@ -1,11 +1,12 @@
+use core::fmt::Debug;
 use core::marker::PhantomData;
 
+use embedded_hal::blocking::spi::{Write};
+use embedded_hal::blocking::spi::write::Default;
 use embedded_hal::digital::v2::{OutputPin, PinState};
-use embedded_hal::spi::MODE_0;
-use embedded_time::rate::Extensions;
-use mcp49xx::interface::SpiInterface;
+use mcp49xx::interface::{SpiInterface, WriteCommand};
 use mcp49xx::marker::{DualChannel, Resolution12Bit, Unbuffered};
-use mcp49xx::{Channel, Command, Mcp49xx};
+use mcp49xx::{Channel, Command, Mcp49xx, Error};
 use rp2040_hal::gpio::bank0::{Gpio10, Gpio11, Gpio4, Gpio5, Gpio9};
 use rp2040_hal::gpio::PushPullOutput;
 use rp2040_hal::gpio::{
@@ -18,10 +19,10 @@ use rp2040_hal::Spi;
 
 use logic::util::{DACVoltage, GateOutput};
 
-pub type GateCVOutWithPins = GateCVOut<SPI1, Gpio10, Gpio11, Gpio9, Gpio4, Gpio5>;
+pub type GateCVOutWithPins<SPI> = GateCVOut<SPI, Gpio10, Gpio11, Gpio9, Gpio4, Gpio5>;
 
 pub struct GateCVOut<
-    D: SpiDevice,
+    SPI: Write<u8>,
     CLK,
     MOSI,
     CS: PinId,
@@ -29,7 +30,7 @@ pub struct GateCVOut<
     G1: PinId + BankPinId,
 > {
     driver: Mcp49xx<
-        SpiInterface<Spi<Enabled, D, 8>, Pin<CS, PushPullOutput>>,
+        SpiInterface<SPI, Pin<CS, PushPullOutput>>,
         Resolution12Bit,
         DualChannel,
         Unbuffered,
@@ -42,18 +43,18 @@ pub struct GateCVOut<
 }
 
 impl<
-        D: SpiDevice,
+        SPI: Write<u8>,
         CLK: PinId + BankPinId,
         MOSI: PinId + BankPinId,
         CS: PinId + BankPinId,
         G1: PinId + BankPinId,
         G2: PinId + BankPinId,
-    > GateCVOut<D, CLK, MOSI, CS, G1, G2>
+    > GateCVOut<SPI, CLK, MOSI, CS, G1, G2>
 {
     pub fn new(
         resets: &mut RESETS,
         // DAC
-        device: D,
+        spi: SPI,
         _clk: Pin<CLK, FunctionSpi>,
         _mosi: Pin<MOSI, FunctionSpi>,
         cs: Pin<CS, PushPullOutput>,
@@ -61,10 +62,8 @@ impl<
         gate1: Pin<G1, PushPullOutput>,
         gate2: Pin<G2, PushPullOutput>,
     ) -> Self {
-        let spi1 = Spi::new(device).init(resets, 125_000_000u32.Hz(), 1_000_000u32.Hz(), &MODE_0);
-
         Self {
-            driver: Mcp49xx::new_mcp4822(spi1, cs),
+            driver: Mcp49xx::new_mcp4822(spi, cs),
             _clk: PhantomData,
             _mosi: PhantomData,
             _cs: PhantomData,
@@ -76,13 +75,14 @@ impl<
 
 impl<
         't,
-        D: SpiDevice,
+        SPI: Write<u8>,
         CLK: PinId + BankPinId,
         MOSI: PinId + BankPinId,
         CS: PinId + BankPinId,
         G1: PinId + BankPinId,
         G2: PinId + BankPinId,
-    > GateOutput<'t, DACVoltage> for GateCVOut<D, CLK, MOSI, CS, G1, G2>
+    > GateOutput<'t, DACVoltage> for GateCVOut<SPI, CLK, MOSI, CS, G1, G2> where
+    <SPI as Write<u8>>::Error: Debug
 {
     fn set_ch0(&mut self, val: DACVoltage) {
         let cmd = Command::default();

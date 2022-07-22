@@ -12,7 +12,7 @@ profont = "^0.6"
 heapless = { version = "^0.7", features = ["ufmt-impl", "serde"] }
 tinybmp = "^0.3"
 embedded-midi = "^0.1"
-embedded-sdmmc = { path = "../embedded-sdmmc-rs" }
+embedded-sdmmc = { path = "../embedded-sdmmc-rs", default-features = false, features = ["defmt-log"]}
 voice_lib = { path = "../voice_lib" }
 serde = { version = "^1.0", default-features = false, features = ["derive", "alloc"] }
 ufmt = "^0.1"

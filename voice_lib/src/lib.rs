@@ -2,7 +2,6 @@
 
 extern crate alloc;
 
-use core::{fmt};
 use serde::{Deserialize, Serialize, de::{Visitor, SeqAccess}};
 
 mod note;
