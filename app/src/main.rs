@@ -14,7 +14,7 @@ static ALLOCATOR: CortexMHeap = CortexMHeap::empty();
 
 #[alloc_error_handler]
 fn oom(_: Layout) -> ! {
-    loop {}
+    panic!("OOM");
 }
 
 mod alarms;
@@ -149,12 +149,12 @@ where
 {
     let buffer_addr = unsafe { scr.buffer_addr() };
 
-    // let spi = SdMmcSpi::new(spi, cs);
-    // let bspi = spi.acquire().await.map_err(Error::Spi)?;
-    // let fs = FileSystem::new(bspi, DummyTime)
-    //     .await
-    //     .map_err(|e| Error::Stdlib(e))?;
-    let mut task_manager = TaskManager::new();
+    let spi = SdMmcSpi::new(spi, cs);
+    let bspi = spi.acquire().await.map_err(Error::Spi)?;
+    let fs = FileSystem::new(bspi, DummyTime)
+        .await
+        .map_err(|e| Error::Stdlib(e))?;
+    let mut task_manager = TaskManager::new(fs);
 
     program.setup();
 
@@ -196,7 +196,9 @@ where
         })
         .map_err(|ProgramError::Stdlib(e)| Error::Stdlib(e))?;
 
-        program.run(prog_time, &mut task_manager);
+        free(|_| {
+            program.run(prog_time, &mut task_manager);
+        });
 
         task_manager.run_tasks(&mut program).await;
 
@@ -216,7 +218,7 @@ where
 fn main() -> ! {
     {
         use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 1024;
+        const HEAP_SIZE: usize = 64 * 1024;
         static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
     }
@@ -289,11 +291,18 @@ fn main() -> ! {
         clocks.peripheral_clock.into(),
     );
 
+    let _spi_pins = (
+        // pins.gpio10.into_mode::<hal::gpio::FunctionSpi>(), // SCK
+        // pins.gpio11.into_mode::<hal::gpio::FunctionSpi>(), // TX
+        pins.gpio12.into_mode::<hal::gpio::FunctionSpi>(), // RX
+    );
+
+
     let spi: Spi<Disabled, _, 8> = Spi::new(pac.SPI1);
     let spi_bus = BusManagerSimple::new(spi.init(
         &mut pac.RESETS,
         125_000_000u32.Hz(),
-        1_000_000u32.Hz(),
+        400_000u32.Hz(),
         &MODE_0,
     ));
 

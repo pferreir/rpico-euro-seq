@@ -242,7 +242,6 @@ dependencies = [
  "byteorder",
  "defmt",
  "embedded-hal",
- "log",
 ]
 
 [[package]]

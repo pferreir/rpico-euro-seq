@@ -1,5 +1,5 @@
 use ciborium::{ser::into_writer, de::from_reader};
-use core::{marker::PhantomData, str};
+use core::{marker::PhantomData, str, fmt::Debug};
 use embedded_sdmmc::{
     BlockDevice, Controller, Directory, File as FATFile, Mode, ShortFileName, TimeSource, Volume,
     VolumeIdx,
@@ -23,7 +23,7 @@ impl FileState for OpenWrite {}
 pub struct Closed;
 impl FileState for Closed {}
 
-pub trait File<S: FileState> {
+pub trait File<S: FileState>: Debug {
     fn new(file_name: &str) -> Self;
     fn init_read(handle: Option<FATFile>, file_name: &str) -> Self;
     fn init_write(handle: Option<FATFile>, file_name: &str) -> Self;
@@ -233,6 +233,12 @@ macro_rules! file_impl {
             }
         }
 
+        impl<S: FileState> Debug for $s<S> {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                f.write_str(&self.file_name)
+            }        
+        }
+
         impl $s<Closed> {
             pub async fn open_read<D: BlockDevice, TS: TimeSource>(
                 self,
@@ -284,6 +290,18 @@ macro_rules! file_impl {
                 into_writer(data, &mut buffer[..]).map_err(StdlibError::<D>::Serialization)?;
                 fs.controller
                     .write(&mut fs.volume, self.handle_mut().unwrap(), &buffer)
+                    .await
+                    .map_err(StdlibError::<D>::Device)?;
+                Ok(())
+            }
+
+            pub async fn dump_bytes<D: BlockDevice, TS: TimeSource>(
+                &mut self,
+                fs: &mut FileSystem<D, TS>,
+                data: &[u8],
+            ) -> Result<(), StdlibError<D>> {
+                fs.controller
+                    .write(&mut fs.volume, self.handle_mut().unwrap(), data)
                     .await
                     .map_err(StdlibError::<D>::Device)?;
                 Ok(())

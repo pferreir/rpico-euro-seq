@@ -1,13 +1,13 @@
-use core::{ops::DerefMut, marker::PhantomData};
+use core::ops::DerefMut;
 
-use alloc::{boxed::Box, collections::BTreeMap};
+use alloc::{boxed::Box, collections::BTreeMap, format};
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565};
 use embedded_sdmmc::{BlockDevice, TimeSource};
 use heapless::String;
 
-use crate::{log::info, programs::Program};
+use crate::{log::{info, error, debug}, programs::Program};
 
-use super::FileSystem;
+use super::{FileSystem, DataFile, File};
 
 pub struct SignalId(pub u64);
 
@@ -16,21 +16,17 @@ pub enum Task {
 }
 
 pub struct TaskManager<B: BlockDevice, TS: TimeSource> {
-    // fs: FileSystem<B, TS>,
+    fs: FileSystem<B, TS>,
     tasks: BTreeMap<u64, Task>,
     signal_id: u64,
-    _b: PhantomData<B>,
-    _ts: PhantomData<TS>
 }
 
 impl<'t, B: BlockDevice + 't, TS: TimeSource + 't> TaskManager<B, TS> {
-    pub fn new() -> Self {
+    pub fn new(fs: FileSystem<B, TS>) -> Self {
         Self {
             tasks: BTreeMap::new(),
             signal_id: 0,
-            // fs,
-            _b: PhantomData,
-            _ts: PhantomData
+            fs,
         }
     }
 
@@ -54,9 +50,28 @@ impl<'t, B: BlockDevice + 't, TS: TimeSource + 't> TaskManager<B, TS> {
         TS: 'u,
     {
         for (tid, task) in self.tasks.iter_mut() {
+            debug(&format!("running task {}", tid));
             match task {
                 Task::FileSave(file_name, data) => {
-                    info("FIEL SVE");
+                    info("SAVING FILE...");
+                    let f = DataFile::new(file_name);
+                    match f.open_write(&mut self.fs, false).await {
+                        Ok(mut f) => {
+                            match f.dump_bytes(&mut self.fs, data).await {
+                                Ok(()) => {
+                                    info("DONE");
+                                    f.close(&mut self.fs).unwrap();
+                                },
+                                Err(e) => {
+                                    error(&format!("{:?}", e));        
+                                },
+                            }
+                        },
+                        Err(e) => {
+                            error(&format!("{:?}", e));
+                        },
+                    }
+                    
                 }
             }
         }

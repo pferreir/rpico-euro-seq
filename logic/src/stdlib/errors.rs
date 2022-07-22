@@ -11,6 +11,12 @@ use super::{File, Closed};
 
 pub struct StdlibErrorFileWrapper<D: BlockDevice, F: File<Closed>>(pub StdlibError<D>, pub F);
 
+impl<D: BlockDevice, F: File<Closed>> Debug for StdlibErrorFileWrapper<D, F> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple("StdlibErrorFileWrapper").field(&self.0).field(&self.1).finish()
+    }
+}
+
 pub enum StdlibError<D: BlockDevice> {
     Device(ESDMMCError<<D as BlockDevice>::Error>),
     Serialization(CBORSerializerError<OutOfSpace>),

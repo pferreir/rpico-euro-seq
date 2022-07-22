@@ -38,10 +38,6 @@ where
         draw_piano_roll(0, self.current_note, screen);
         self.draw_grid(0, start_time, start_beat as u32, screen);
 
-        let mut text = String::<32>::new();
-        uwrite!(text, "ITER SINCE {}", start_beat).duwrp();
-        info(&text);
-
         self.draw_notes(
             0,
             self.current_note,

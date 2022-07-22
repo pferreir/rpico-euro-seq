@@ -3,6 +3,7 @@
 
 use core::str;
 use std::future::Future;
+use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 use std::{borrow::Borrow, cell::RefCell, rc::Rc};
 
@@ -184,6 +185,7 @@ impl BlockDevice for LocalStorageDevice {
     type Error = LocalStorageDeviceError;
     type ReadFuture<'b> = impl Future<Output = Result<(), Self::Error>> + 'b;
     type WriteFuture<'b> = impl Future<Output = Result<(), Self::Error>> + 'b;
+    type BlocksFuture<'b> = impl Future<Output = Result<BlockCount, Self::Error>> + 'b;
 
     fn read<'a>(
         &'a mut self,
@@ -223,8 +225,10 @@ impl BlockDevice for LocalStorageDevice {
         }
     }
 
-    fn num_blocks(&self) -> Result<BlockCount, Self::Error> {
-        Ok(BlockCount(LOCAL_STORAGE_SIZE as u32 / 512))
+    fn num_blocks<'a>(&'a self) -> Self::BlocksFuture<'a> {
+        async move {
+            Ok(BlockCount(LOCAL_STORAGE_SIZE as u32 / 512))
+        }
     }
 }
 
@@ -279,13 +283,16 @@ fn loop_func<
         //     let _ = f.borrow_mut().take();
         //     return;
         // }
-        let now = window
-            .performance()
-            .expect("should have a Performance")
-            .now();
 
         {
             let mut mg = program.lock().unwrap();
+            MIDI_QUEUE.with(|vec| {
+                for msg in vec.borrow().iter() {
+                    mg.process_midi(msg);
+                }
+                vec.borrow_mut().clear();
+            });
+
             INPUT_QUEUE.with(|vec| {
                 for msg in vec.borrow().iter() {
                     mg.process_ui_input(msg).unwrap();
@@ -293,12 +300,10 @@ fn loop_func<
                 vec.borrow_mut().clear();
             });
 
-            MIDI_QUEUE.with(|vec| {
-                for msg in vec.borrow().iter() {
-                    mg.process_midi(msg);
-                }
-                vec.borrow_mut().clear();
-            });
+            let now = window
+            .performance()
+            .expect("should have a Performance")
+            .now();
 
             let tm = task_manager.clone();
             let tmg = tm.lock();
