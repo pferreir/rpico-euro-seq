@@ -19,3 +19,4 @@ ufmt = "^0.1"
 alloc-cortex-m = { version = "^0.4", optional = true }
 ciborium = {version = "^0.2", default-features = false, features = [] }
 ciborium-io = {version = "^0.2"}
+futures = { version = "^0.3" }

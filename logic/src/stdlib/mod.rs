@@ -7,4 +7,4 @@ pub use errors::{StdlibError, StdlibErrorFileWrapper};
 pub use files::{
     BinFile, Closed, ConfigFile, DataFile, File, FileState, FileSystem, OpenRead, OpenWrite,
 };
-pub use tasks::{SignalId, TaskManager, Task};
+pub use tasks::{SignalId, TaskManager, Task, TaskResult};

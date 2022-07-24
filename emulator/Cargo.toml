@@ -8,11 +8,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 embedded-graphics = "^0.7"
-embedded-graphics-web-simulator = "^0.3"
+embedded-graphics-web-simulator = { version = "^0.3" }
 embedded-sdmmc = { path = "../embedded-sdmmc-rs", default-features = false, features = ["defmt-log"] }
-wasm-bindgen = { version = "^0.2", features = ["nightly", "serde-serialize"] }
+wasm-bindgen = { version = "^0.2", features = ["serde-serialize"] }
 wasm-bindgen-futures = "^0.4"
-wasm-rs-async-executor = { version = "^0.9", features = ["cooperative-browser"] }
 tinybmp = "^0.3"
 logic = { path = "../logic" }
 voice_lib = { path = "../voice_lib" }
@@ -21,6 +20,7 @@ midi-types = "^0.1"
 serde = { version = "^1.0", features = ["derive"] }
 wee_alloc = "^0.4"
 ufmt = "^0.1"
+futures = { version = "^0.3" }
 
 [dependencies.web-sys]
 version = "^0.3"

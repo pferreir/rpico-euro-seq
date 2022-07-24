@@ -1,33 +1,35 @@
 #![feature(generic_associated_types)]
 #![feature(type_alias_impl_trait)]
 
+extern crate alloc;
+
 use core::str;
-use std::future::Future;
-use std::ops::DerefMut;
-use std::sync::{Arc, Mutex};
-use std::{borrow::Borrow, cell::RefCell, rc::Rc};
+use std::cell::RefCell;
+use core::future::Future;
+use std::rc::Rc;
 
 use embedded_graphics_web_simulator::{
     display::WebSimulatorDisplay, output_settings::OutputSettingsBuilder,
 };
 use embedded_sdmmc::TimeSource;
-use embedded_sdmmc::{Block, BlockCount, BlockDevice, BlockIdx, Controller, Timestamp};
+use embedded_sdmmc::{Block, BlockCount, BlockDevice, BlockIdx, Timestamp};
 use js_sys::{Date, Uint8Array};
-use logic::stdlib::{FileSystem, TaskManager};
+use logic::stdlib::{FileSystem, TaskManager, Task, TaskResult};
 use midi_types::MidiMessage;
 use serde::{Deserialize, Serialize};
 use ufmt::{uDebug, uWrite};
 use wasm_bindgen::{prelude::*, JsCast};
-use wasm_bindgen_futures::{future_to_promise, spawn_local};
+use wasm_bindgen_futures::spawn_local;
 use web_sys::OscillatorNode;
 use web_sys::Window;
-use web_sys::{console, RequestMode};
-use web_sys::{AudioContext, Request};
-use web_sys::{GainNode, OscillatorType, RequestInit};
+use web_sys::{console};
+use web_sys::{AudioContext};
+use web_sys::{GainNode, OscillatorType};
+use futures::channel::mpsc::{self, Receiver, Sender};
 
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::*};
 use logic::util::GateOutput;
-use logic::{log, LogLevel};
+use logic::{LogLevel};
 use logic::{
     programs::{Program, SequencerProgram},
     screen::{SCREEN_HEIGHT, SCREEN_WIDTH},
@@ -226,9 +228,7 @@ impl BlockDevice for LocalStorageDevice {
     }
 
     fn num_blocks<'a>(&'a self) -> Self::BlocksFuture<'a> {
-        async move {
-            Ok(BlockCount(LOCAL_STORAGE_SIZE as u32 / 512))
-        }
+        async move { Ok(BlockCount(LOCAL_STORAGE_SIZE as u32 / 512)) }
     }
 }
 
@@ -263,39 +263,35 @@ fn loop_func<
     P: Program<'t, LocalStorageDevice, WebSimulatorDisplay<Rgb565>, JSTime> + 'static,
 >(
     program: P,
-    fs: FileSystem<LocalStorageDevice, JSTime>,
-    mut output: BrowserOutput,
+    output: BrowserOutput,
     window: Window,
-    mut display: WebSimulatorDisplay<Rgb565>,
+    display: WebSimulatorDisplay<Rgb565>,
+    rx_channel: Receiver<TaskResult>,
+    tx_channel: Sender<Task>
 ) {
-    let task_manager = TaskManager::new(fs);
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
 
-    let program = Arc::new(Mutex::new(program));
-    let task_manager = Arc::new(Mutex::new(task_manager));
+    let pgm_cell = Rc::new(RefCell::new(program));
+    let disp_cell = Rc::new(RefCell::new(display));
+    let out_cell = Rc::new(RefCell::new(output));
+    let rx_cell = Rc::new(RefCell::new(rx_channel));
+    let tx_cell = Rc::new(RefCell::new(tx_channel));
 
-    *g.borrow_mut() = Some(Closure::wrap(Box::new(move || {
-        // if do_break {
-
-        //     // Drop our handle to this closure so that it will get cleaned
-        //     // up once we return.
-        //     let _ = f.borrow_mut().take();
-        //     return;
-        // }
-
+    *(g.as_ref()).borrow_mut() = Some(Closure::wrap(Box::new(move || {
+        let out = out_cell.borrow_mut();
+        let mut pgm = pgm_cell.borrow_mut();
         {
-            let mut mg = program.lock().unwrap();
             MIDI_QUEUE.with(|vec| {
                 for msg in vec.borrow().iter() {
-                    mg.process_midi(msg);
+                    pgm.process_midi(msg);
                 }
                 vec.borrow_mut().clear();
             });
 
             INPUT_QUEUE.with(|vec| {
                 for msg in vec.borrow().iter() {
-                    mg.process_ui_input(msg).unwrap();
+                    pgm.process_ui_input(msg).unwrap();
                 }
                 vec.borrow_mut().clear();
             });
@@ -305,34 +301,21 @@ fn loop_func<
             .expect("should have a Performance")
             .now();
 
-            let tm = task_manager.clone();
-            let tmg = tm.lock();
-            mg.run(now.floor() as u32, tmg.unwrap());
+            pgm.run(now.floor() as u32, rx_cell.borrow_mut(), tx_cell.borrow_mut());
         }
-
-        let pgm = program.clone();
-        let tkm = task_manager.clone();
-        spawn_local(async move {
-            let mut mg_pgm = pgm.lock().unwrap();
-            let mut mg_tkm = tkm.lock().unwrap();
-            mg_tkm.run_tasks(mg_pgm.deref_mut()).await;
-        });
 
         {
-            let mut mg = program.lock().unwrap();
-            display.clear(Rgb565::BLACK).unwrap();
-            mg.render_screen(&mut display);
-            display.flush().expect("could not flush buffer");
-            mg.update_output(&mut output);
+            let mut d = disp_cell.borrow_mut();
+            d.clear(Rgb565::BLACK).unwrap();
+            pgm.render_screen(&mut d);
+            d.flush().expect("could not flush buffer");
+            pgm.update_output(out);
         }
-
-        let b: &Rc<RefCell<Option<Closure<dyn FnMut()>>>> = f.borrow();
         // Schedule ourself for another requestAnimationFrame callback.
-        request_animation_frame(b.as_ref().borrow().as_ref().unwrap());
+        request_animation_frame(f.borrow().as_ref().unwrap());
     }) as Box<dyn FnMut()>));
 
-    let b: &Rc<RefCell<Option<Closure<dyn FnMut()>>>> = g.borrow();
-    request_animation_frame(b.as_ref().borrow().as_ref().unwrap());
+    request_animation_frame(g.borrow().as_ref().unwrap());
 }
 
 #[wasm_bindgen]
@@ -367,6 +350,7 @@ pub fn midi_new_message(message: &JsValue) {
 // This is like the `main` function, except for JavaScript.
 #[wasm_bindgen(start)]
 pub async fn main_js() -> Result<(), JsValue> {
+
     console_error_panic_hook::set_once();
 
     let mut program =
@@ -391,8 +375,17 @@ pub async fn main_js() -> Result<(), JsValue> {
     program.setup();
 
     let fs = FileSystem::new(LocalStorageDevice, JSTime).await.unwrap();
+    let mut task_manager = TaskManager::new(fs);
+    let (mut tm_to_pgm_tx, tm_to_pgm_rx) = mpsc::channel(128);
+    let (pgm_to_tm_tx, mut pgm_to_tm_rx) = mpsc::channel(128);
 
-    loop_func(program, fs, output, window, display);
+    spawn_local(async move {
+        loop {
+            task_manager.run_tasks(&mut pgm_to_tm_rx, &mut tm_to_pgm_tx).await;
+        }
+    });
+
+    loop_func(program, output, window, display, tm_to_pgm_rx, pgm_to_tm_tx);
 
     Ok(())
 }

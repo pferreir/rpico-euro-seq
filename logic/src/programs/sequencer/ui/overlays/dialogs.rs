@@ -11,6 +11,7 @@ use embedded_graphics::{
 use embedded_sdmmc::{BlockDevice, TimeSource};
 use heapless::String;
 use profont::PROFONT_14_POINT;
+use futures::channel::mpsc;
 
 use crate::{
     programs::{Program, SequencerProgram},
@@ -20,9 +21,9 @@ use crate::{
             select::{Message, SelectGroup},
             Button, ButtonId, Dialog, DynDrawable, Input, Overlay, OverlayResult,
         },
-        SignalId, StdlibError, TaskManager,
+        SignalId, StdlibError, TaskManager, Task,
     },
-    ui::UIInputEvent, log::info,
+    ui::UIInputEvent, log::info, util::DiscreetUnwrap,
 };
 
 enum FileLoadAction {}
@@ -63,7 +64,7 @@ impl<
     fn run<'u>(
         &'u mut self,
     ) -> Result<
-        Option<Box<dyn FnOnce(&mut P, &mut TaskManager<B, TS>) -> Result<(), StdlibError<B>> + 'u>>,
+        Option<Box<dyn FnOnce(&mut P, &mut mpsc::Sender<Task>) -> Result<(), StdlibError<B>> + 'u>>,
         StdlibError<B>,
     > {
         todo!()
@@ -202,7 +203,7 @@ where
         Option<Box<
             dyn FnOnce(
                     &mut SequencerProgram<'t, B, TS, T>,
-                    &mut TaskManager<B, TS>,
+                    &mut mpsc::Sender<Task>,
                 ) -> Result<(), StdlibError<B>>
                 + 'u,
         >>,
@@ -211,10 +212,9 @@ where
         if self.save {
             self.save = false;
             Ok(Some(Box::new(
-                |program: &mut SequencerProgram<'t, B, TS, T>,
-                 task_manager: &mut TaskManager<B, TS>| {
+                |program, task_tx| {
                     let task = program.save(self.file_name.clone())?;
-                    task_manager.enqueue(task);
+                    task_tx.try_send(task).duwrp();
                     Ok(())
                 },
             )))

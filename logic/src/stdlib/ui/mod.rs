@@ -12,12 +12,13 @@ pub use button::{Button, ButtonId};
 pub use dialog::{Dialog};
 use embedded_graphics::{prelude::WebColors, draw_target::DrawTarget, Drawable, pixelcolor::{Rgb565}};
 use embedded_sdmmc::{BlockDevice, TimeSource};
+use futures::channel::mpsc;
 pub use input::Input;
 pub use menu::{MenuDef, MenuOptions};
 
 use crate::{programs::{Program}, ui::UIInputEvent};
 
-use super::{TaskManager, SignalId, StdlibError};
+use super::{TaskManager, SignalId, StdlibError, Task};
 
 
 pub trait DynTarget {}
@@ -32,7 +33,7 @@ pub trait Overlay<'t, D: DrawTarget<Color = Rgb565>, P: Program<'t, B, D, TS>, B
         input: &UIInputEvent,
     ) -> OverlayResult<'t, D, P, B, TS> where D: 't;
 
-    fn run<'u>(&'u mut self) -> Result<Option<Box<dyn FnOnce(&mut P, &mut TaskManager<B, TS>) -> Result<(), StdlibError<B>> + 'u>>, StdlibError<B>>;
+    fn run<'u>(&'u mut self) -> Result<Option<Box<dyn FnOnce(&mut P, &mut mpsc::Sender<Task>) -> Result<(), StdlibError<B>> + 'u>>, StdlibError<B>>;
     fn draw(&self, target: &mut D) -> Result<(), D::Error>;
 }
 

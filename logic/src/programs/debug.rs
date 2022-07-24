@@ -9,10 +9,11 @@ use embedded_graphics::{
 };
 use embedded_midi::MidiMessage;
 use embedded_sdmmc::{BlockDevice, TimeSource};
+use futures::channel::mpsc;
 use heapless::{spsc::Queue, String};
 use ufmt::uwrite;
 
-use crate::{stdlib::{FileSystem, TaskManager}, ui::UIInputEvent};
+use crate::{stdlib::{FileSystem, TaskManager, TaskResult, Task}, ui::UIInputEvent};
 
 use super::{Program, ProgramError};
 
@@ -81,7 +82,7 @@ where
         Ok(())
     }
 
-    fn render_screen(&mut self, screen: &mut D) {
+    fn render_screen(&mut self, mut screen: &mut D) {
         let STYLE_YELLOW = MonoTextStyle::new(&FONT_10X20, Rgb565::YELLOW);
         let STYLE_RED = MonoTextStyle::new(&FONT_10X20, Rgb565::RED);
         let STYLE_CYAN = MonoTextStyle::new(&FONT_10X20, Rgb565::CYAN);
@@ -110,7 +111,7 @@ where
             } else {
                 STYLE_EMPTY
             })
-            .draw(screen)
+            .draw(screen.deref_mut())
             .unwrap();
 
         Circle::new(Point::new(60, 30), 20)
@@ -119,11 +120,11 @@ where
             } else {
                 STYLE_EMPTY
             })
-            .draw(screen)
+            .draw(screen.deref_mut())
             .unwrap();
 
         Text::new(&out, Point::new(20, 15), STYLE_CYAN)
-            .draw(screen)
+            .draw(screen.deref_mut())
             .unwrap();
 
         out.truncate(0);
@@ -144,27 +145,27 @@ where
         }
 
         Text::new(&out, Point::new(20, 160), STYLE_YELLOW)
-            .draw(screen)
+            .draw(screen.deref_mut())
             .unwrap();
 
         out.truncate(0);
         uwrite!(out, "{} fps", self.fps).unwrap();
 
         Text::new(&out, Point::new(20, 100), STYLE_RED)
-            .draw(screen)
+            .draw(screen.deref_mut())
             .unwrap();
 
         out.truncate(0);
         uwrite!(out, "{}KB", self.mem_usage / 1024).unwrap();
         Text::new(&out, Point::new(180, 220), STYLE_CYAN)
-            .draw(screen)
+            .draw(screen.deref_mut())
             .unwrap();
     }
 
     fn setup(&mut self) {
     }
 
-    fn run<'u>(&mut self, program_time: u32, _task_manager: impl DerefMut<Target = TaskManager<B, TS>> + 'u) {
+    fn run(&mut self, program_time: u32, _rx: impl DerefMut<Target = mpsc::Receiver<TaskResult>>, _tx: impl DerefMut<Target = mpsc::Sender<Task>>) {
         let diff = program_time - self.last_tick;
         if diff >= 1_000u32 {
             self.fps = (self.frame_counter as u32 * 1_000 / diff) as u8;
