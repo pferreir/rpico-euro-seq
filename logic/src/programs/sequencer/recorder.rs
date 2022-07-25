@@ -5,7 +5,7 @@ use heapless::{spsc::Queue, String, Vec};
 use ufmt::uwrite;
 use voice_lib::{NoteFlag, NotePair, VoiceTrack};
 
-use crate::{log, util::DiscreetUnwrap, stdlib::{StdlibError, FileSystem, SignalId, TaskManager, Task}};
+use crate::{log, util::DiscreetUnwrap, stdlib::{StdlibError, FileSystem, SignalId, TaskManager, Task, TaskType}};
 
 use super::data::SequenceFile;
 
@@ -80,7 +80,7 @@ impl<'t> MonoRecorderBox<'t> {
         self.file.set_name(file_name);
     }
 
-    pub(crate) fn save_file<B: BlockDevice, TS: TimeSource>(&mut self) -> Result<Task, StdlibError<B>> {
+    pub(crate) fn save_file<B: BlockDevice, TS: TimeSource>(&mut self) -> Result<TaskType, StdlibError<B>> {
         Ok(self.file.save()?)
     }
 }

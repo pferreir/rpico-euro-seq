@@ -21,7 +21,7 @@ use crate::{
             select::{Message, SelectGroup},
             Button, ButtonId, Dialog, DynDrawable, Input, Overlay, OverlayResult,
         },
-        SignalId, StdlibError, TaskManager, Task,
+        SignalId, StdlibError, TaskManager, Task, TaskInterface,
     },
     ui::UIInputEvent, log::info, util::DiscreetUnwrap,
 };
@@ -64,7 +64,7 @@ impl<
     fn run<'u>(
         &'u mut self,
     ) -> Result<
-        Option<Box<dyn FnOnce(&mut P, &mut mpsc::Sender<Task>) -> Result<(), StdlibError<B>> + 'u>>,
+        Option<Box<dyn FnOnce(&mut P, &mut TaskInterface) -> Result<(), StdlibError<B>> + 'u>>,
         StdlibError<B>,
     > {
         todo!()
@@ -203,7 +203,7 @@ where
         Option<Box<
             dyn FnOnce(
                     &mut SequencerProgram<'t, B, TS, T>,
-                    &mut mpsc::Sender<Task>,
+                    &mut TaskInterface,
                 ) -> Result<(), StdlibError<B>>
                 + 'u,
         >>,
@@ -212,9 +212,9 @@ where
         if self.save {
             self.save = false;
             Ok(Some(Box::new(
-                |program, task_tx| {
+                |program, task_iface| {
                     let task = program.save(self.file_name.clone())?;
-                    task_tx.try_send(task).duwrp();
+                    task_iface.submit(task).duwrp();
                     Ok(())
                 },
             )))

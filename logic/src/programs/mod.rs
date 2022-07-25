@@ -11,7 +11,7 @@ pub use sequencer::SequencerProgram;
 pub use debug::DebugProgram;
 use voice_lib::NotePair;
 
-use crate::{ui::UIInputEvent, util::{GateOutput}, stdlib::{FileSystem, StdlibError, SignalId, TaskManager, Task, TaskResult}};
+use crate::{ui::UIInputEvent, util::{GateOutput}, stdlib::{FileSystem, StdlibError, SignalId, TaskManager, Task, TaskResult, TaskInterface}};
 
 #[derive(Debug)]
 pub enum ProgramError<D: BlockDevice> {
@@ -27,5 +27,5 @@ pub trait Program<'t, B: BlockDevice + 't, D: DrawTarget<Color = Rgb565>, TS: Ti
     fn update_output<'u, 'v, T: TryFrom<&'u NotePair>, O: GateOutput<'u, T>>(&'v self, output: impl DerefMut<Target=O>) where
     'v: 'u {}
     fn setup(&mut self);
-    fn run(&mut self, program_time: u32, rx: impl DerefMut<Target = mpsc::Receiver<TaskResult>>, tx: impl DerefMut<Target = mpsc::Sender<Task>>);
+    fn run(&mut self, program_time: u32, task_iface: &mut TaskInterface);
 }

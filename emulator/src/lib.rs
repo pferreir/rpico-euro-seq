@@ -8,13 +8,15 @@ use std::cell::RefCell;
 use core::future::Future;
 use std::rc::Rc;
 
+use alloc::task;
 use embedded_graphics_web_simulator::{
     display::WebSimulatorDisplay, output_settings::OutputSettingsBuilder,
 };
 use embedded_sdmmc::TimeSource;
 use embedded_sdmmc::{Block, BlockCount, BlockDevice, BlockIdx, Timestamp};
 use js_sys::{Date, Uint8Array};
-use logic::stdlib::{FileSystem, TaskManager, Task, TaskResult};
+use logic::log::info;
+use logic::stdlib::{FileSystem, TaskManager, Task, TaskResult, TaskReturn, TaskInterface};
 use midi_types::MidiMessage;
 use serde::{Deserialize, Serialize};
 use ufmt::{uDebug, uWrite};
@@ -262,36 +264,29 @@ fn loop_func<
     't,
     P: Program<'t, LocalStorageDevice, WebSimulatorDisplay<Rgb565>, JSTime> + 'static,
 >(
-    program: P,
-    output: BrowserOutput,
+    mut program: P,
+    mut output: BrowserOutput,
     window: Window,
-    display: WebSimulatorDisplay<Rgb565>,
-    rx_channel: Receiver<TaskResult>,
+    mut display: WebSimulatorDisplay<Rgb565>,
+    rx_channel: Receiver<TaskReturn>,
     tx_channel: Sender<Task>
 ) {
+    let mut task_iface = TaskInterface::new(rx_channel, tx_channel);
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
 
-    let pgm_cell = Rc::new(RefCell::new(program));
-    let disp_cell = Rc::new(RefCell::new(display));
-    let out_cell = Rc::new(RefCell::new(output));
-    let rx_cell = Rc::new(RefCell::new(rx_channel));
-    let tx_cell = Rc::new(RefCell::new(tx_channel));
-
     *(g.as_ref()).borrow_mut() = Some(Closure::wrap(Box::new(move || {
-        let out = out_cell.borrow_mut();
-        let mut pgm = pgm_cell.borrow_mut();
         {
             MIDI_QUEUE.with(|vec| {
                 for msg in vec.borrow().iter() {
-                    pgm.process_midi(msg);
+                    program.process_midi(msg);
                 }
                 vec.borrow_mut().clear();
             });
 
             INPUT_QUEUE.with(|vec| {
                 for msg in vec.borrow().iter() {
-                    pgm.process_ui_input(msg).unwrap();
+                    program.process_ui_input(msg).unwrap();
                 }
                 vec.borrow_mut().clear();
             });
@@ -301,15 +296,14 @@ fn loop_func<
             .expect("should have a Performance")
             .now();
 
-            pgm.run(now.floor() as u32, rx_cell.borrow_mut(), tx_cell.borrow_mut());
+            program.run(now.floor() as u32, &mut task_iface);
         }
 
         {
-            let mut d = disp_cell.borrow_mut();
-            d.clear(Rgb565::BLACK).unwrap();
-            pgm.render_screen(&mut d);
-            d.flush().expect("could not flush buffer");
-            pgm.update_output(out);
+            display.clear(Rgb565::BLACK).unwrap();
+            program.render_screen(&mut display);
+            display.flush().expect("could not flush buffer");
+            program.update_output(&mut output);
         }
         // Schedule ourself for another requestAnimationFrame callback.
         request_animation_frame(f.borrow().as_ref().unwrap());
@@ -380,9 +374,8 @@ pub async fn main_js() -> Result<(), JsValue> {
     let (pgm_to_tm_tx, mut pgm_to_tm_rx) = mpsc::channel(128);
 
     spawn_local(async move {
-        loop {
-            task_manager.run_tasks(&mut pgm_to_tm_rx, &mut tm_to_pgm_tx).await;
-        }
+        info("Running task manager...");
+        task_manager.run_tasks(&mut pgm_to_tm_rx, &mut tm_to_pgm_tx).await;
     });
 
     loop_func(program, output, window, display, tm_to_pgm_rx, pgm_to_tm_tx);

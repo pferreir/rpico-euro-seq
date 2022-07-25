@@ -5,7 +5,7 @@ use serde::{Serialize, Deserialize};
 use ufmt::uwrite;
 use ciborium::ser::into_writer;
 
-use crate::{util::DiscreetUnwrap, stdlib::{StdlibErrorFileWrapper, Closed, Task}, log::{info, debug}};
+use crate::{util::DiscreetUnwrap, stdlib::{StdlibErrorFileWrapper, Closed, TaskType}, log::{info, debug}};
 use crate::stdlib::{FileSystem, StdlibError, DataFile, File};
 
 const FILE_BUFFER_SIZE: usize = 10240;
@@ -51,7 +51,7 @@ impl SequenceFile {
 
     pub(crate) fn save<D: BlockDevice>(
         &self,
-    ) -> Result<Task, StdlibError<D>> {
+    ) -> Result<TaskType, StdlibError<D>> {
         let mut buffer = [0u8; FILE_BUFFER_SIZE];
         debug("Serializing data...");
         into_writer(self, &mut buffer[..]).map_err(StdlibError::<D>::Serialization)?;
@@ -60,7 +60,7 @@ impl SequenceFile {
         let mut file_name = String::<12>::new();
         uwrite!(file_name, "{}.seq", &self.seq_name as &str).duwrp();
 
-        Ok(Task::FileSave(file_name, Box::new(buffer)))
+        Ok(TaskType::FileSave(file_name, Box::new(buffer)))
     }
 
 }

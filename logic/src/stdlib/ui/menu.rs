@@ -34,13 +34,12 @@ pub trait MenuDef<
 macro_rules! impl_overlay {
     ($t: ident, $p: ident) => {
         use crate::screen::{SCREEN_HEIGHT, SCREEN_WIDTH};
-        use crate::stdlib::{ui::Overlay, StdlibError, Task};
+        use crate::stdlib::{ui::Overlay, StdlibError, TaskInterface};
         use embedded_graphics::{
             mono_font::MonoTextStyle,
             primitives::{PrimitiveStyleBuilder, Rectangle},
             text::{Alignment, Text},
         };
-        use futures::channel::mpsc;
         use profont::PROFONT_14_POINT;
 
         impl<'t, D: DrawTarget<Color = Rgb565> + 't, B: BlockDevice + 't, TS: TimeSource + 't>
@@ -120,7 +119,7 @@ macro_rules! impl_overlay {
             fn run<'u>(
                 &'u mut self,
             ) -> Result<
-                Option<Box<dyn FnOnce(&mut $p<'t, B, TS, D>, &mut mpsc::Sender<Task>) -> Result<(), StdlibError<B>>>>,
+                Option<Box<dyn FnOnce(&mut $p<'t, B, TS, D>, &mut TaskInterface) -> Result<(), StdlibError<B>>>>,
                 StdlibError<B>,
             >
             {

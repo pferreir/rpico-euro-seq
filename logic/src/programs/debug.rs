@@ -13,7 +13,7 @@ use futures::channel::mpsc;
 use heapless::{spsc::Queue, String};
 use ufmt::uwrite;
 
-use crate::{stdlib::{FileSystem, TaskManager, TaskResult, Task}, ui::UIInputEvent};
+use crate::{stdlib::{FileSystem, TaskManager, TaskResult, Task, TaskInterface}, ui::UIInputEvent};
 
 use super::{Program, ProgramError};
 
@@ -165,7 +165,7 @@ where
     fn setup(&mut self) {
     }
 
-    fn run(&mut self, program_time: u32, _rx: impl DerefMut<Target = mpsc::Receiver<TaskResult>>, _tx: impl DerefMut<Target = mpsc::Sender<Task>>) {
+    fn run(&mut self, program_time: u32, _task_iface: &mut TaskInterface) {
         let diff = program_time - self.last_tick;
         if diff >= 1_000u32 {
             self.fps = (self.frame_counter as u32 * 1_000 / diff) as u8;

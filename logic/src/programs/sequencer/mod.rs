@@ -1,10 +1,10 @@
 use core::{fmt::Debug, future::Future, marker::PhantomData, ops::DerefMut, pin::Pin, borrow::BorrowMut};
 
-use alloc::{boxed::Box, vec::Vec};
+use alloc::{boxed::Box, vec::Vec, format};
 use embedded_graphics::{draw_target::Translated, pixelcolor::Rgb565, prelude::*};
 use embedded_midi::{MidiMessage, Note as MidiNote};
 use embedded_sdmmc::{BlockDevice, TimeSource};
-use futures::channel::mpsc;
+use futures::{channel::mpsc, StreamExt};
 use heapless::{spsc::Queue, String};
 use tinybmp::Bmp;
 
@@ -20,7 +20,7 @@ use crate::{
     log::info,
     stdlib::{
         ui::{Overlay, OverlayResult},
-        Closed, DataFile, File, FileSystem, SignalId, StdlibError, Task, TaskManager, TaskResult,
+        Closed, DataFile, File, FileSystem, SignalId, StdlibError, Task, TaskManager, TaskResult, TaskType, TaskInterface,
     },
     ui::UIInputEvent,
     util::{midi_note_to_lib, DiscreetUnwrap, GateOutput, QueuePoppingIter},
@@ -104,13 +104,13 @@ where
     pub(crate) fn run(
         &mut self,
         program: &mut SequencerProgram<'t, B, TS, D>,
-        tx_task_manager: &mut mpsc::Sender<Task>,
+        task_iface: &mut TaskInterface,
     ) {
         let mut overlays = self.stack.take().unwrap();
 
         for overlay in overlays.iter_mut() {
             match overlay.run().duwrp() {
-                Some(f) => f(program, tx_task_manager).unwrap(),
+                Some(f) => f(program, task_iface).unwrap(),
                 None => {}
             }
         }
@@ -171,9 +171,15 @@ impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>>
 where
     <D as DrawTarget>::Error: Debug,
 {
-    fn save(&mut self, file_name: String<12>) -> Result<Task, StdlibError<B>> {
+    fn save(&mut self, file_name: String<12>) -> Result<TaskType, StdlibError<B>> {
         self.recorder.set_file_name(&file_name);
         self.recorder.save_file::<B, TS>()
+    }
+
+    fn _check_task_returns(&mut self, task_iface: &mut TaskInterface) {
+        while let Ok(Some((id, result))) = task_iface.receiver().try_next() {
+            info(&format!("{} {:?}", id, result));
+        }
     }
 }
 
@@ -316,7 +322,7 @@ where
             .duwrp();
     }
 
-    fn run(&mut self, program_time: u32, rx: impl DerefMut<Target = mpsc::Receiver<TaskResult>>, mut tx: impl DerefMut<Target = mpsc::Sender<Task>>) {
+    fn run(&mut self, program_time: u32, task_iface: &mut TaskInterface) {
         self.program_time = program_time;
 
         let time_diff = match self.prev_program_time {
@@ -366,9 +372,10 @@ where
             }
         }
 
+        self._check_task_returns(task_iface);
+
         let mut overlay_manager = self.overlay_manager.take().unwrap();
-        // TODO: move this to a place where it executes before the input events
-        overlay_manager.run(self, tx.borrow_mut());
+        overlay_manager.run(self, task_iface);
         self.overlay_manager.replace(overlay_manager);
     }
 }

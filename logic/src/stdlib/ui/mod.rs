@@ -18,7 +18,7 @@ pub use menu::{MenuDef, MenuOptions};
 
 use crate::{programs::{Program}, ui::UIInputEvent};
 
-use super::{TaskManager, SignalId, StdlibError, Task};
+use super::{TaskManager, SignalId, StdlibError, Task, TaskInterface};
 
 
 pub trait DynTarget {}
@@ -33,7 +33,7 @@ pub trait Overlay<'t, D: DrawTarget<Color = Rgb565>, P: Program<'t, B, D, TS>, B
         input: &UIInputEvent,
     ) -> OverlayResult<'t, D, P, B, TS> where D: 't;
 
-    fn run<'u>(&'u mut self) -> Result<Option<Box<dyn FnOnce(&mut P, &mut mpsc::Sender<Task>) -> Result<(), StdlibError<B>> + 'u>>, StdlibError<B>>;
+    fn run<'u>(&'u mut self) -> Result<Option<Box<dyn FnOnce(&mut P, &mut TaskInterface) -> Result<(), StdlibError<B>> + 'u>>, StdlibError<B>>;
     fn draw(&self, target: &mut D) -> Result<(), D::Error>;
 }
 
