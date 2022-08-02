@@ -85,6 +85,7 @@ impl From<u8> for NotePair {
     }
 }
 
+#[derive(Debug)]
 pub struct InvalidNotePair;
 
 impl TryFrom<&NotePair> for u8 {

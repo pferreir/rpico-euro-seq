@@ -1,8 +1,11 @@
 use core::cell::RefCell;
+use alloc::format;
 use cortex_m::interrupt::{free, CriticalSection, Mutex};
+use defmt::debug;
 use embedded_midi::{MidiIn as DriverMidiIn, MidiMessage};
 use embedded_time::rate::{Baud, Hertz};
 use heapless::spsc::Queue;
+use logic::log::warning;
 use rp2040_hal::pac::{Peripherals, RESETS, UART0};
 use rp2040_hal::uart::{DataBits, Enabled, Rx, StopBits, UartConfig, UartDevice, UartPeripheral};
 use rp2040_hal::{
@@ -68,7 +71,7 @@ where
                     }
                 },
                 Err(e) => match e {
-                    nb::Error::Other(err) => panic!(),
+                    nb::Error::Other(err) => warning(&format!("UART error: {:?}", err)),
                     nb::Error::WouldBlock => break,
                 },
             };
@@ -100,6 +103,7 @@ pub fn init_midi_in(
         let mut singleton = MIDI_IN.borrow(cs).borrow_mut();
         singleton.replace(midi_in);
     });
+    debug!("Set MIDI singleton");
 }
 
 pub fn init_interrupts(pac: &mut Peripherals) {
@@ -117,9 +121,13 @@ pub fn handle_irq(cs: &CriticalSection, pac: &mut Peripherals) {
         return;
     }
 
+    debug!("preparing to borrow...");
+
     if let Some(ref mut midi_in) = MIDI_IN.borrow(cs).borrow_mut().as_mut() {
         midi_in.read_message();
     }
+
+    debug!("borrowed!");
 
     // no need to clear IRQs, since reading from the UART buffer
     // does it

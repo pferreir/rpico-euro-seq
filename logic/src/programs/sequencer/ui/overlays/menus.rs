@@ -53,8 +53,8 @@ impl MenuOptions for FileMenu {}
 
 impl_overlay!(FileMenu, SequencerProgram);
 
-impl<'t, D: DrawTarget<Color = Rgb565> + 't, B: BlockDevice + 't, TS: TimeSource + 't>
-    MenuDef<'t, D, SequencerProgram<'t, B, TS, D>, B, TS> for FileMenu
+impl<'t, D: DrawTarget<Color = Rgb565> + 't, B: BlockDevice + 't, TS: TimeSource + 't, TI: TaskInterface + 't>
+    MenuDef<'t, D, SequencerProgram<'t, B, TS, D, TI>, B, TS, TI> for FileMenu
 where
     D::Error: Debug,
 {
@@ -84,7 +84,7 @@ where
 
     fn run_choice(
         option: &FileMenuOption,
-    ) -> OverlayResult<'t, D, SequencerProgram<'t, B, TS, D>, B, TS>
+    ) -> OverlayResult<'t, D, SequencerProgram<'t, B, TS, D, TI>, B, TS, TI>
     where
         D: 't,
     {
@@ -107,7 +107,7 @@ where
     fn process_ui_input(
         &mut self,
         input: &UIInputEvent,
-    ) -> OverlayResult<'t, D, SequencerProgram<'t, B, TS, D>, B, TS>
+    ) -> OverlayResult<'t, D, SequencerProgram<'t, B, TS, D, TI>, B, TS, TI>
     where
         D: 't,
     {
@@ -115,7 +115,7 @@ where
             UIInputEvent::EncoderTurn(v) => {
                 self.selection = (self.selection as i8 + *v)
                     .rem_euclid(
-                        <Self as MenuDef<'t, D, SequencerProgram<'t, B, TS, D>, B, TS>>::options(
+                        <Self as MenuDef<'t, D, SequencerProgram<'t, B, TS, D, TI>, B, TS, TI>>::options(
                             self,
                         )
                         .len() as i8,

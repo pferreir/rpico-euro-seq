@@ -6,7 +6,7 @@ use embedded_time::duration::Extensions;
 
 use rp2040_hal::{
     pac::Peripherals,
-    timer::{Alarm0, Alarm1, Alarm2, Alarm3},
+    timer::{Alarm as AlarmTrait, Alarm0, Alarm1, Alarm2, Alarm3},
     Timer,
 };
 

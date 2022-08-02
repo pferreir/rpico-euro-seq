@@ -1,7 +1,7 @@
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565};
 use embedded_sdmmc::{BlockDevice, TimeSource};
 
-use crate::{programs::Program, ui::UIInputEvent};
+use crate::{programs::Program, ui::UIInputEvent, stdlib::TaskInterface};
 
 use super::{Overlay, OverlayResult};
 
@@ -10,10 +10,11 @@ pub trait MenuOptions {}
 pub trait MenuDef<
     't,
     D: DrawTarget<Color = Rgb565>,
-    P: Program<'t, B, D, TS>,
+    P: Program<'t, B, D, TS, TI>,
     B: BlockDevice + 't,
     TS: TimeSource + 't,
->: Overlay<'t, D, P, B, TS>
+    TI: TaskInterface + 't,
+>: Overlay<'t, D, P, B, TS, TI>
 {
     type OptionType;
 
@@ -21,11 +22,11 @@ pub trait MenuDef<
     fn label(&self, option: &Self::OptionType) -> &'static str;
     fn selected(&self, option: &Self::OptionType) -> bool;
 
-    fn run_choice(option: &Self::OptionType) -> OverlayResult<'t, D, P, B, TS>
+    fn run_choice(option: &Self::OptionType) -> OverlayResult<'t, D, P, B, TS, TI>
     where
         D: 't;
 
-    fn process_ui_input(&mut self, input: &UIInputEvent) -> OverlayResult<'t, D, P, B, TS>
+    fn process_ui_input(&mut self, input: &UIInputEvent) -> OverlayResult<'t, D, P, B, TS, TI>
     where
         D: 't;
 }
@@ -42,8 +43,8 @@ macro_rules! impl_overlay {
         };
         use profont::PROFONT_14_POINT;
 
-        impl<'t, D: DrawTarget<Color = Rgb565> + 't, B: BlockDevice + 't, TS: TimeSource + 't>
-            Overlay<'t, D, $p<'t, B, TS, D>, B, TS> for $t
+        impl<'t, D: DrawTarget<Color = Rgb565> + 't, B: BlockDevice + 't, TS: TimeSource + 't, TI: TaskInterface + 't>
+            Overlay<'t, D, $p<'t, B, TS, D, TI>, B, TS, TI> for $t
         where
             D::Error: Debug,
         {
@@ -74,13 +75,13 @@ macro_rules! impl_overlay {
 
                 let mut y = 15i32;
 
-                for option in <Self as MenuDef<'t, D, $p<'t, B, TS, D>, _, _>>::options(self) {
+                for option in <Self as MenuDef<'t, D, $p<'t, B, TS, D, TI>, _, _, _>>::options(self) {
                     let text =
-                        <Self as MenuDef<'t, D, $p<'t, B, TS, D>, _, _>>::label(self, option);
+                        <Self as MenuDef<'t, D, $p<'t, B, TS, D, TI>, _, _, _>>::label(self, option);
 
                     Rectangle::new(Point::new(15, y), Size::new(SCREEN_WIDTH as u32 - 30, 17))
                         .into_styled(
-                            if <Self as MenuDef<'t, D, $p<'t, B, TS, D>, _, _>>::selected(
+                            if <Self as MenuDef<'t, D, $p<'t, B, TS, D, TI>, _, _, _>>::selected(
                                 self, option,
                             ) {
                                 button_style_selected
@@ -92,7 +93,7 @@ macro_rules! impl_overlay {
                     Text::with_alignment(
                         text,
                         Point::new(SCREEN_WIDTH as i32 / 2, y + 13),
-                        if <Self as MenuDef<'t, D, $p<'t, B, TS, D>, _, _>>::selected(self, option)
+                        if <Self as MenuDef<'t, D, $p<'t, B, TS, D, TI>, _, _, _>>::selected(self, option)
                         {
                             text_style_selected
                         } else {
@@ -109,17 +110,17 @@ macro_rules! impl_overlay {
             fn process_ui_input(
                 &mut self,
                 input: &UIInputEvent,
-            ) -> OverlayResult<'t, D, $p<'t, B, TS, D>, B, TS>
+            ) -> OverlayResult<'t, D, $p<'t, B, TS, D, TI>, B, TS, TI>
             where
                 D: 't,
             {
-                <Self as MenuDef<'t, D, $p<'t, B, TS, D>, B, TS>>::process_ui_input(self, input)
+                <Self as MenuDef<'t, D, $p<'t, B, TS, D, TI>, B, TS, TI>>::process_ui_input(self, input)
             }
 
             fn run<'u>(
                 &'u mut self,
             ) -> Result<
-                Option<Box<dyn FnOnce(&mut $p<'t, B, TS, D>, &mut TaskInterface) -> Result<(), StdlibError<B>>>>,
+                Option<Box<dyn FnOnce(&mut $p<'t, B, TS, D, TI>, &mut TI) -> Result<(), StdlibError<B>>>>,
                 StdlibError<B>,
             >
             {

@@ -9,11 +9,13 @@ use embedded_graphics::{
 };
 use embedded_midi::MidiMessage;
 use embedded_sdmmc::{BlockDevice, TimeSource};
-use futures::channel::mpsc;
 use heapless::{spsc::Queue, String};
 use ufmt::uwrite;
 
-use crate::{stdlib::{FileSystem, TaskManager, TaskResult, Task, TaskInterface}, ui::UIInputEvent};
+use crate::{
+    stdlib::{FileSystem, Task, TaskInterface, TaskManager, TaskResult},
+    ui::UIInputEvent,
+};
 
 use super::{Program, ProgramError};
 
@@ -33,7 +35,13 @@ pub struct DebugProgram {
     frame_counter: u8,
 }
 
-impl<'t, B: BlockDevice + 't, D: DrawTarget<Color = Rgb565> + 't, TS: TimeSource + 't> Program<'t, B, D, TS> for DebugProgram
+impl<
+        't,
+        B: BlockDevice + 't,
+        D: DrawTarget<Color = Rgb565> + 't,
+        TS: TimeSource + 't,
+        TI: TaskInterface + 't,
+    > Program<'t, B, D, TS, TI> for DebugProgram
 where
     <D as DrawTarget>::Error: Debug,
 {
@@ -162,10 +170,9 @@ where
             .unwrap();
     }
 
-    fn setup(&mut self) {
-    }
+    fn setup(&mut self) {}
 
-    fn run(&mut self, program_time: u32, _task_iface: &mut TaskInterface) {
+    fn run(&mut self, program_time: u32, _task_iface: &mut TI) {
         let diff = program_time - self.last_tick;
         if diff >= 1_000u32 {
             self.fps = (self.frame_counter as u32 * 1_000 / diff) as u8;

@@ -1,6 +1,5 @@
 #![no_std]
 
-#![feature(let_chains)]
 #![feature(generic_associated_types)]
 #![feature(type_alias_impl_trait)]
 #![feature(associated_type_defaults)]

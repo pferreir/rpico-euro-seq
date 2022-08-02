@@ -1,10 +1,11 @@
-use core::{fmt::Debug, future::Future, marker::PhantomData, ops::DerefMut, pin::Pin, borrow::BorrowMut};
+use core::{
+    borrow::BorrowMut, fmt::Debug, future::Future, marker::PhantomData, ops::{DerefMut, Deref}, pin::Pin,
+};
 
-use alloc::{boxed::Box, vec::Vec, format};
+use alloc::{boxed::Box, format, vec::Vec};
 use embedded_graphics::{draw_target::Translated, pixelcolor::Rgb565, prelude::*};
 use embedded_midi::{MidiMessage, Note as MidiNote};
 use embedded_sdmmc::{BlockDevice, TimeSource};
-use futures::{channel::mpsc, StreamExt};
 use heapless::{spsc::Queue, String};
 use tinybmp::Bmp;
 
@@ -20,10 +21,11 @@ use crate::{
     log::info,
     stdlib::{
         ui::{Overlay, OverlayResult},
-        Closed, DataFile, File, FileSystem, SignalId, StdlibError, Task, TaskManager, TaskResult, TaskType, TaskInterface,
+        CVChannel, Channel, Closed, DataFile, File, FileSystem, GateChannel, SignalId, StdlibError,
+        Task, TaskInterface, TaskManager, TaskResult, TaskType, Output, GateChannelId, CVChannelId,
     },
     ui::UIInputEvent,
-    util::{midi_note_to_lib, DiscreetUnwrap, GateOutput, QueuePoppingIter},
+    util::{midi_note_to_lib, DiscreetUnwrap, QueuePoppingIter},
 };
 use voice_lib::{Note, NoteFlag, NotePair};
 
@@ -57,21 +59,28 @@ enum VoiceConfig {
     PolySteal,
 }
 
-pub struct OverlayManager<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>>
-where
+pub struct OverlayManager<
+    't,
+    B: BlockDevice,
+    TS: TimeSource,
+    D: DrawTarget<Color = Rgb565>,
+    TI: TaskInterface + 't,
+> where
     D::Error: Debug,
 {
     pub(crate) stack:
-        Option<Vec<Box<dyn Overlay<'t, D, SequencerProgram<'t, B, TS, D>, B, TS> + 't>>>,
-    pub(crate) pending_ops: Vec<OverlayResult<'t, D, SequencerProgram<'t, B, TS, D>, B, TS>>,
+        Option<Vec<Box<dyn Overlay<'t, D, SequencerProgram<'t, B, TS, D, TI>, B, TS, TI> + 't>>>,
+    pub(crate) pending_ops:
+        Vec<OverlayResult<'t, D, SequencerProgram<'t, B, TS, D, TI>, B, TS, TI>>,
 }
 
-impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>> OverlayManager<'t, B, TS, D>
+impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>, TI: TaskInterface>
+    OverlayManager<'t, B, TS, D, TI>
 where
     D::Error: Debug,
 {
     fn new() -> Self {
-        let mut stack: Vec<Box<dyn Overlay<'t, D, SequencerProgram<'t, B, TS, D>, B, TS>>> =
+        let mut stack: Vec<Box<dyn Overlay<'t, D, SequencerProgram<'t, B, TS, D, TI>, B, TS, TI>>> =
             Vec::new();
         stack.push(Box::new(FileMenu::default()));
         Self {
@@ -103,8 +112,8 @@ where
 
     pub(crate) fn run(
         &mut self,
-        program: &mut SequencerProgram<'t, B, TS, D>,
-        task_iface: &mut TaskInterface,
+        program: &mut SequencerProgram<'t, B, TS, D, TI>,
+        task_iface: &mut TI,
     ) {
         let mut overlays = self.stack.take().unwrap();
 
@@ -135,8 +144,13 @@ where
     }
 }
 
-pub struct SequencerProgram<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>>
-where
+pub struct SequencerProgram<
+    't,
+    B: BlockDevice,
+    TS: TimeSource,
+    D: DrawTarget<Color = Rgb565>,
+    TI: TaskInterface,
+> where
     D: 't,
     <D as DrawTarget>::Error: Debug,
 {
@@ -151,7 +165,7 @@ where
 
     // UI
     pub(crate) selected_action: UIAction,
-    pub(crate) overlay_manager: Option<OverlayManager<'t, B, TS, D>>,
+    pub(crate) overlay_manager: Option<OverlayManager<'t, B, TS, D, TI>>,
 
     // Icons
     pub(crate) play_icon: Bmp<'t, Rgb565>,
@@ -166,8 +180,8 @@ where
     _d: PhantomData<D>,
 }
 
-impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>>
-    SequencerProgram<'t, B, TS, D>
+impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>, TI: TaskInterface>
+    SequencerProgram<'t, B, TS, D, TI>
 where
     <D as DrawTarget>::Error: Debug,
 {
@@ -176,15 +190,20 @@ where
         self.recorder.save_file::<B, TS>()
     }
 
-    fn _check_task_returns(&mut self, task_iface: &mut TaskInterface) {
-        while let Ok(Some((id, result))) = task_iface.receiver().try_next() {
+    fn _check_task_returns(&mut self, task_iface: &mut impl TaskInterface) {
+        while let Ok(Some((id, result))) = task_iface.pop() {
             info(&format!("{} {:?}", id, result));
         }
     }
 }
 
-impl<'t, B: BlockDevice + 't, TS: TimeSource + 't, D: DrawTarget<Color = Rgb565> + 't>
-    Program<'t, B, D, TS> for SequencerProgram<'t, B, TS, D>
+impl<
+        't,
+        B: BlockDevice + 't,
+        TS: TimeSource + 't,
+        D: DrawTarget<Color = Rgb565> + 't,
+        TI: TaskInterface + 't,
+    > Program<'t, B, D, TS, TI> for SequencerProgram<'t, B, TS, D, TI>
 where
     <D as DrawTarget>::Error: Debug,
 {
@@ -268,22 +287,21 @@ where
         self.midi_queue.enqueue(msg.clone()).unwrap();
     }
 
-    fn update_output<'u, 'v, T: TryFrom<&'u NotePair>, O: GateOutput<'u, T>>(
-        &'v self,
-        mut output: impl DerefMut<Target = O>,
-    ) where
-        'v: 'u,
-    {
+    fn update_output<T: for<'u> TryFrom<&'u NotePair, Error = E>, E: Debug, O: Deref<Target = impl Output<T, E>> + DerefMut>(
+        &self,
+        mut output: O,
+    ) -> Result<(), E> {
         // TODO: polyphonic
         match self.recorder.last_note() {
             None => {
-                output.set_gate0(false);
+                output.set_gate(GateChannelId::Gate0, false);
             }
             Some(np) => {
-                output.set_gate0(true);
-                output.set_ch0(np.try_into().duwrp());
+                output.set_gate(GateChannelId::Gate0, true);
+                output.set_cv(CVChannelId::CV0, np.try_into()?);
             }
         }
+        Ok(())
     }
 
     fn setup(&mut self) {
@@ -322,7 +340,7 @@ where
             .duwrp();
     }
 
-    fn run(&mut self, program_time: u32, task_iface: &mut TaskInterface) {
+    fn run(&mut self, program_time: u32, task_iface: &mut TI) {
         self.program_time = program_time;
 
         let time_diff = match self.prev_program_time {

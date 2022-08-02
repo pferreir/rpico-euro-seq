@@ -26,6 +26,9 @@
             "problemMatcher": [
                 "$rustc"
             ],
+            "options": {
+                "cwd": "app"
+            },
             "group": "build",
             "label": "rust: cargo build release"
         }

@@ -11,7 +11,6 @@ use embedded_graphics::{
 use embedded_sdmmc::{BlockDevice, TimeSource};
 use heapless::String;
 use profont::PROFONT_14_POINT;
-use futures::channel::mpsc;
 
 use crate::{
     programs::{Program, SequencerProgram},
@@ -45,12 +44,13 @@ impl<T: DrawTarget<Color = Rgb565>> Default for FileLoadDialog<T> {
 impl<
         't,
         D: DrawTarget<Color = Rgb565>,
-        P: Program<'t, B, D, TS>,
+        P: Program<'t, B, D, TS, TI>,
         B: BlockDevice + 't,
         TS: TimeSource + 't,
-    > Overlay<'t, D, P, B, TS> for FileLoadDialog<D>
+        TI: TaskInterface + 't
+    > Overlay<'t, D, P, B, TS, TI> for FileLoadDialog<D>
 {
-    fn process_ui_input(&mut self, input: &UIInputEvent) -> OverlayResult<'t, D, P, B, TS>
+    fn process_ui_input(&mut self, input: &UIInputEvent) -> OverlayResult<'t, D, P, B, TS, TI>
     where
         D: 't,
     {
@@ -64,7 +64,7 @@ impl<
     fn run<'u>(
         &'u mut self,
     ) -> Result<
-        Option<Box<dyn FnOnce(&mut P, &mut TaskInterface) -> Result<(), StdlibError<B>> + 'u>>,
+        Option<Box<dyn FnOnce(&mut P, &mut TI) -> Result<(), StdlibError<B>> + 'u>>,
         StdlibError<B>,
     > {
         todo!()
@@ -138,15 +138,15 @@ impl<T: DrawTarget<Color = Rgb565>> Default for FileSaveDialog<T> {
     }
 }
 
-impl<'t, T: DrawTarget<Color = Rgb565> + 't, B: BlockDevice + 't, TS: TimeSource + 't>
-    Overlay<'t, T, SequencerProgram<'t, B, TS, T>, B, TS> for FileSaveDialog<T>
+impl<'t, T: DrawTarget<Color = Rgb565> + 't, B: BlockDevice + 't, TS: TimeSource + 't, TI: TaskInterface>
+    Overlay<'t, T, SequencerProgram<'t, B, TS, T, TI>, B, TS, TI> for FileSaveDialog<T>
 where
     T::Error: Debug,
 {
     fn process_ui_input(
         &mut self,
         input: &UIInputEvent,
-    ) -> OverlayResult<'t, T, SequencerProgram<'t, B, TS, T>, B, TS>
+    ) -> OverlayResult<'t, T, SequencerProgram<'t, B, TS, T, TI>, B, TS, TI>
     where
         T: 't,
     {
@@ -202,8 +202,8 @@ where
     ) -> Result<
         Option<Box<
             dyn FnOnce(
-                    &mut SequencerProgram<'t, B, TS, T>,
-                    &mut TaskInterface,
+                    &mut SequencerProgram<'t, B, TS, T, TI>,
+                    &mut TI,
                 ) -> Result<(), StdlibError<B>>
                 + 'u,
         >>,

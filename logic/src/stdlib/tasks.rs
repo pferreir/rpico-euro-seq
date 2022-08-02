@@ -1,3 +1,5 @@
+use core::fmt::Debug;
+
 use alloc::{boxed::Box, collections::BTreeMap, format};
 use embedded_sdmmc::{BlockDevice, TimeSource};
 use heapless::String;
@@ -5,7 +7,7 @@ use heapless::String;
 use crate::{
     log::{debug, error, info}, util::DiscreetUnwrap,
 };
-use futures::{channel::mpsc::{self, Receiver, Sender}, StreamExt};
+use futures::{StreamExt, Stream, Sink, SinkExt};
 
 use super::{DataFile, File, FileSystem};
 
@@ -15,7 +17,7 @@ pub enum TaskType {
     FileSave(String<12>, Box<[u8]>),
 }
 
-pub struct Task(u32, TaskType);
+pub struct Task(pub u32, pub TaskType);
 
 pub type TaskId = u32;
 pub type TaskReturn = (TaskId, TaskResult);
@@ -37,62 +39,47 @@ impl<'t, B: BlockDevice + 't, TS: TimeSource + 't> TaskManager<B, TS> {
         }
     }
 
-    pub async fn run_tasks(&mut self, rx_channel: &mut mpsc::Receiver<Task>, tx_channel: &mut mpsc::Sender<TaskReturn>) {
-        while let Some(task) = rx_channel.next().await {
-            tx_channel.try_send((task.0, match task.1 {
-                TaskType::FileSave(file_name, data) => {
-                    info("SAVING FILE...");
-                    let f = DataFile::new(&file_name);
-                    debug("Opening in write mode");
-                    match f.open_write(&mut self.fs, false).await {
-                        Ok(mut f) => {
-                            debug("Dumping bytes...");
-                            match f.dump_bytes(&mut self.fs, &data).await {
-                                Ok(()) => {
-                                    info("DONE");
-                                    f.close(&mut self.fs).unwrap();
-                                    TaskResult::Done
-                                }
-                                Err(e) => {
-                                    let err_str = format!("Error writing: {:?}", e);
-                                    error(&err_str);
-                                    TaskResult::Error("Error writing file".into())
+    pub async fn run_tasks(&mut self, rx_channel: &mut (impl Stream<Item = Task> + Unpin), tx_channel: &mut (impl Sink<TaskReturn> + Unpin)) {
+        info("Task process running");
+        loop {
+            if let Some(task) = rx_channel.next().await {
+                debug(&format!("Running task {}", task.0));
+                tx_channel.send((task.0, match task.1 {
+                    TaskType::FileSave(file_name, data) => {
+                        info("SAVING FILE...");
+                        let f = DataFile::new(&file_name);
+                        debug("Opening in write mode");
+                        match f.open_write(&mut self.fs, false).await {
+                            Ok(mut f) => {
+                                debug("Dumping bytes...");
+                                match f.dump_bytes(&mut self.fs, &data).await {
+                                    Ok(()) => {
+                                        info("DONE");
+                                        f.close(&mut self.fs).unwrap();
+                                        TaskResult::Done
+                                    }
+                                    Err(e) => {
+                                        let err_str = format!("Error writing: {:?}", e);
+                                        error(&err_str);
+                                        TaskResult::Error("Error writing file".into())
+                                    }
                                 }
                             }
-                        }
-                        Err(e) => {
-                            error(&format!("Error opening: {:?}", e));
-                            TaskResult::Error("Error writing file".into())
+                            Err(e) => {
+                                error(&format!("Error opening: {:?}", e));
+                                TaskResult::Error("Error writing file".into())
+                            }
                         }
                     }
-                }
-            })).duwrp()
+                })).await.duwrp()
+            }
         }
     }
 }
 
-pub struct TaskInterface {
-    receiver: Receiver<TaskReturn>,
-    sender: Sender<Task>,
-    id_counter: u32
-}
+pub trait TaskInterface {
+    type Error: Debug;
 
-impl TaskInterface {
-    pub fn new(receiver: Receiver<TaskReturn>, sender: Sender<Task>) -> Self {
-        Self {
-            receiver,
-            sender,
-            id_counter: 0
-        }
-    }
-
-    pub fn submit(&mut self, task_type: TaskType) -> Result<(), mpsc::TrySendError<Task>>{
-        self.sender.try_send(Task(self.id_counter, task_type))?;
-        self.id_counter = self.id_counter.wrapping_add(1);
-        Ok(())
-    }
-
-    pub fn receiver(&mut self) -> &mut Receiver<TaskReturn> {
-        &mut self.receiver
-    }
+    fn submit(&mut self, task_type: TaskType) -> Result<TaskId, Self::Error>;
+    fn pop(&mut self) -> Result<Option<TaskReturn>, Self::Error>;
 }

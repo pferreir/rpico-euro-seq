@@ -3,35 +3,38 @@
 
 extern crate alloc;
 
+use core::future::Future;
 use core::str;
 use std::cell::RefCell;
-use core::future::Future;
+use std::fmt::Debug;
+use std::marker::PhantomData;
 use std::rc::Rc;
 
-use alloc::task;
 use embedded_graphics_web_simulator::{
     display::WebSimulatorDisplay, output_settings::OutputSettingsBuilder,
 };
 use embedded_sdmmc::TimeSource;
 use embedded_sdmmc::{Block, BlockCount, BlockDevice, BlockIdx, Timestamp};
+use futures::channel::mpsc::{self, Receiver, Sender};
 use js_sys::{Date, Uint8Array};
 use logic::log::info;
-use logic::stdlib::{FileSystem, TaskManager, Task, TaskResult, TaskReturn, TaskInterface};
-use midi_types::MidiMessage;
+use logic::stdlib::{
+    CVChannel, CVChannelId, Channel, FileSystem, GateChannel, GateChannelId, Output, Task, TaskId,
+    TaskInterface, TaskManager, TaskResult, TaskReturn, TaskType,
+};
+use midi_types::{MidiMessage, Note};
 use serde::{Deserialize, Serialize};
 use ufmt::{uDebug, uWrite};
 use wasm_bindgen::{prelude::*, JsCast};
 use wasm_bindgen_futures::spawn_local;
+use web_sys::console;
+use web_sys::AudioContext;
 use web_sys::OscillatorNode;
 use web_sys::Window;
-use web_sys::{console};
-use web_sys::{AudioContext};
 use web_sys::{GainNode, OscillatorType};
-use futures::channel::mpsc::{self, Receiver, Sender};
 
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::*};
-use logic::util::GateOutput;
-use logic::{LogLevel};
+use logic::LogLevel;
 use logic::{
     programs::{Program, SequencerProgram},
     screen::{SCREEN_HEIGHT, SCREEN_WIDTH},
@@ -95,12 +98,6 @@ impl Serialize for MidiMsgWrapper {
     }
 }
 
-struct BrowserOutput {
-    osc0: OscillatorNode,
-    vol0: GainNode,
-    state0: bool,
-}
-
 struct Frequency(f32);
 
 impl TryFrom<&NotePair> for Frequency {
@@ -112,26 +109,64 @@ impl TryFrom<&NotePair> for Frequency {
     }
 }
 
-impl<'t> GateOutput<'t, Frequency> for BrowserOutput {
-    fn set_ch0(&mut self, val: Frequency) {
+struct BrowserGateChannel {
+    vol0: GainNode,
+}
+
+struct BrowserCVChannel {
+    osc0: OscillatorNode,
+}
+
+impl GateChannel for BrowserGateChannel {}
+
+impl Channel<bool> for BrowserGateChannel {
+    fn set(&mut self, val: bool) {
+        let g = self.vol0.gain();
+        if val {
+            g.set_value(1.0);
+        } else {
+            g.set_value(0.0);
+        }
+    }
+}
+
+impl CVChannel<Frequency> for BrowserCVChannel {
+    type Error = <Frequency as TryFrom<&'static NotePair>>::Error;
+
+    fn set_from_note(&mut self, val: &NotePair) -> Result<(), Self::Error> {
+        self.set(val.try_into()?);
+        Ok(())
+    }
+}
+
+impl Channel<Frequency> for BrowserCVChannel {
+    fn set(&mut self, val: Frequency) {
         self.osc0.frequency().set_value(val.0);
     }
+}
 
-    fn set_ch1(&mut self, val: Frequency) {
-        todo!()
-    }
+struct BrowserOutput {
+    gate0: BrowserGateChannel,
+    cv0: BrowserCVChannel,
+}
 
-    fn set_gate0(&mut self, val: bool) {
-        if val {
-            self.vol0.gain().set_value(1.0);
-        } else {
-            self.vol0.gain().set_value(0.0);
+impl<'t> Output<Frequency, InvalidNotePair> for BrowserOutput {
+    fn set_gate(&mut self, id: GateChannelId, value: bool) {
+        match id {
+            GateChannelId::Gate0 => {
+                self.gate0.set(value);
+            }
+            GateChannelId::Gate1 => todo!(),
         }
-        self.state0 = val;
     }
 
-    fn set_gate1(&mut self, val: bool) {
-        todo!()
+    fn set_cv(&mut self, id: logic::stdlib::CVChannelId, value: Frequency) {
+        match id {
+            CVChannelId::CV0 => {
+                self.cv0.set(value);
+            }
+            CVChannelId::CV1 => todo!(),
+        }
     }
 }
 
@@ -145,9 +180,8 @@ impl BrowserOutput {
         vol0.connect_with_audio_node(&ac.destination()).unwrap();
         osc0.start().unwrap();
         Self {
-            osc0,
-            vol0,
-            state0: false,
+            gate0: BrowserGateChannel { vol0 },
+            cv0: BrowserCVChannel { osc0 },
         }
     }
 }
@@ -234,6 +268,40 @@ impl BlockDevice for LocalStorageDevice {
     }
 }
 
+pub struct WebTaskInterface {
+    receiver: Receiver<TaskReturn>,
+    sender: Sender<Task>,
+    id_counter: u32,
+}
+
+impl WebTaskInterface {
+    pub fn new(receiver: Receiver<TaskReturn>, sender: Sender<Task>) -> Self {
+        Self {
+            receiver,
+            sender,
+            id_counter: 0,
+        }
+    }
+}
+
+impl TaskInterface for WebTaskInterface {
+    type Error = mpsc::TrySendError<Task>;
+
+    fn submit(&mut self, task_type: TaskType) -> Result<TaskId, Self::Error> {
+        let id = self.id_counter;
+        self.id_counter = self.id_counter.wrapping_add(1);
+        self.sender.try_send(Task(id, task_type)).map(|_| id)
+    }
+
+    fn pop(&mut self) -> Result<Option<TaskReturn>, Self::Error> {
+        if let Ok(Some(ret)) = self.receiver.try_next() {
+            Ok(Some(ret))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
 struct JSTime;
 
 impl TimeSource for JSTime {
@@ -262,16 +330,18 @@ fn request_animation_frame(f: &Closure<dyn FnMut()>) {
 
 fn loop_func<
     't,
-    P: Program<'t, LocalStorageDevice, WebSimulatorDisplay<Rgb565>, JSTime> + 'static,
+    P: Program<'t, LocalStorageDevice, WebSimulatorDisplay<Rgb565>, JSTime, WebTaskInterface>
+        + 'static,
 >(
     mut program: P,
-    mut output: BrowserOutput,
+    output: BrowserOutput,
     window: Window,
     mut display: WebSimulatorDisplay<Rgb565>,
     rx_channel: Receiver<TaskReturn>,
-    tx_channel: Sender<Task>
+    tx_channel: Sender<Task>,
 ) {
-    let mut task_iface = TaskInterface::new(rx_channel, tx_channel);
+    let mut task_iface = WebTaskInterface::new(rx_channel, tx_channel);
+    let output = Rc::new(RefCell::new(output));
     let f = Rc::new(RefCell::new(None));
     let g = f.clone();
 
@@ -292,9 +362,9 @@ fn loop_func<
             });
 
             let now = window
-            .performance()
-            .expect("should have a Performance")
-            .now();
+                .performance()
+                .expect("should have a Performance")
+                .now();
 
             program.run(now.floor() as u32, &mut task_iface);
         }
@@ -303,7 +373,7 @@ fn loop_func<
             display.clear(Rgb565::BLACK).unwrap();
             program.render_screen(&mut display);
             display.flush().expect("could not flush buffer");
-            program.update_output(&mut output);
+            program.update_output(output.borrow_mut()).unwrap();
         }
         // Schedule ourself for another requestAnimationFrame callback.
         request_animation_frame(f.borrow().as_ref().unwrap());
@@ -344,11 +414,14 @@ pub fn midi_new_message(message: &JsValue) {
 // This is like the `main` function, except for JavaScript.
 #[wasm_bindgen(start)]
 pub async fn main_js() -> Result<(), JsValue> {
-
     console_error_panic_hook::set_once();
 
-    let mut program =
-        SequencerProgram::<LocalStorageDevice, JSTime, WebSimulatorDisplay<Rgb565>>::new();
+    let mut program = SequencerProgram::<
+        LocalStorageDevice,
+        JSTime,
+        WebSimulatorDisplay<Rgb565>,
+        WebTaskInterface,
+    >::new();
 
     let window = web_sys::window().unwrap();
     let document = window.document().unwrap();
@@ -375,7 +448,9 @@ pub async fn main_js() -> Result<(), JsValue> {
 
     spawn_local(async move {
         info("Running task manager...");
-        task_manager.run_tasks(&mut pgm_to_tm_rx, &mut tm_to_pgm_tx).await;
+        task_manager
+            .run_tasks(&mut pgm_to_tm_rx, &mut tm_to_pgm_tx)
+            .await;
     });
 
     loop_func(program, output, window, display, tm_to_pgm_rx, pgm_to_tm_tx);

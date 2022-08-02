@@ -1,4 +1,4 @@
-use crate::util::DiscreetUnwrap;
+use crate::{util::DiscreetUnwrap, stdlib::TaskInterface};
 use core::{
     cmp::{max, min},
     fmt::Debug,
@@ -24,8 +24,8 @@ use super::{
 const SCORE_WIDTH: u32 = SCREEN_WIDTH as u32 - ROLL_WIDTH as u32;
 const PIXELS_PER_BEAT: u32 = SCORE_WIDTH / NUM_HORIZONTAL_BEATS;
 
-impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>>
-    SequencerProgram<'t, B, TS, D>
+impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>, TI: TaskInterface>
+    SequencerProgram<'t, B, TS, D, TI>
 where
     <D as DrawTarget>::Error: Debug,
 {

@@ -9,7 +9,7 @@ use embedded_graphics::{
 };
 use embedded_sdmmc::{BlockDevice, TimeSource};
 
-use crate::{programs::{sequencer::State, SequencerProgram}, util::DiscreetUnwrap};
+use crate::{programs::{sequencer::State, SequencerProgram}, util::DiscreetUnwrap, stdlib::TaskInterface};
 
 pub(crate) mod icons {
     pub(crate) static PLAY_ICON: &[u8] = include_bytes!("../../../../assets/play.bmp");
@@ -59,7 +59,7 @@ impl From<u8> for UIAction {
     }
 }
 
-impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>> SequencerProgram<'t, B, TS, D> where
+impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>, TI: TaskInterface> SequencerProgram<'t, B, TS, D, TI> where
     <D as DrawTarget>::Error: Debug,
 {
     pub(crate) fn draw_buttons(&self, pos: Point, screen: &mut D)

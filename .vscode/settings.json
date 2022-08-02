@@ -2,9 +2,7 @@
 {
     "cortex-debug.variableUseNaturalFormat": true,
     "rust-analyzer.checkOnSave.enable": true,
-    "rust-analyzer.checkOnSave.allTargets": false,
-    "rust-analyzer.checkOnSave.overrideCommand": ["cargo", "check", "--message-format=json", "--target=wasm32-unknown-unknown"],
-    "rust-analyzer.cargo.target": "wasm32-unknown-unknown",
+    // "rust-analyzer.checkOnSave.allTargets": false,
     "[rust]": {
       "editor.defaultFormatter": "rust-lang.rust-analyzer"
     }
