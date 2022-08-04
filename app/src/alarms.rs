@@ -1,6 +1,6 @@
 use core::cell::RefCell;
 
-use cortex_m::interrupt::{free, CriticalSection, Mutex};
+use critical_section::{Mutex, CriticalSection, with};
 use defmt::{error, trace};
 use embedded_time::duration::Extensions;
 
@@ -85,7 +85,7 @@ impl AlarmWrapper {
 struct AlarmSlot {
     alarm: AlarmWrapper,
     value: Option<(
-        fn(&CriticalSection, &mut Peripherals, AlarmArgs, u8),
+        fn(CriticalSection, &mut Peripherals, AlarmArgs, u8),
         AlarmArgs,
     )>,
 }
@@ -105,19 +105,19 @@ impl AlarmSlot {
     fn free(
         &mut self,
     ) -> (
-        fn(&CriticalSection, &mut Peripherals, AlarmArgs, u8),
+        fn(CriticalSection, &mut Peripherals, AlarmArgs, u8),
         AlarmArgs,
     ) {
         self.value.take().unwrap()
     }
 
-    fn set(&mut self, f: fn(&CriticalSection, &mut Peripherals, AlarmArgs, u8), args: AlarmArgs) {
+    fn set(&mut self, f: fn(CriticalSection, &mut Peripherals, AlarmArgs, u8), args: AlarmArgs) {
         self.value = Some((f, args));
     }
 }
 
 pub fn init_interrupts(pac: &mut Peripherals, timer: &mut Timer) {
-    free(|cs| {
+    with(|cs| {
         let data = ALARM_POOL.borrow(cs);
         data.replace(Some([
             AlarmSlot::new(timer.alarm_0().unwrap()),
@@ -128,15 +128,16 @@ pub fn init_interrupts(pac: &mut Peripherals, timer: &mut Timer) {
     })
 }
 
-pub fn handle_irq(cs: &CriticalSection, pac: &mut Peripherals) {
+pub fn handle_irq(cs: CriticalSection, pac: &mut Peripherals) {
     trace!("--- TIMER_IRQ ---");
 
     let ints = pac.TIMER.ints.read().bits();
 
+    let mut alarm_pool = ALARM_POOL.borrow(cs).borrow_mut();
+
     for n in 0..4 {
         // check ALARM_0..3 for interrupt flags
         if ints & (1 << n) > 0 {
-            let mut alarm_pool = ALARM_POOL.borrow(cs).borrow_mut();
             if let Some(pool) = alarm_pool.as_mut() {
                 if !pool[n].is_free() {
                     // make space for an alarm
@@ -160,9 +161,9 @@ pub fn handle_irq(cs: &CriticalSection, pac: &mut Peripherals) {
 }
 
 pub fn fire_alarm(
-    cs: &CriticalSection,
+    cs: CriticalSection,
     time: u32,
-    callback: fn(&CriticalSection, &mut Peripherals, AlarmArgs, u8),
+    callback: fn(CriticalSection, &mut Peripherals, AlarmArgs, u8),
     args: AlarmArgs,
 ) -> u8 {
     let mut alarm_pool = ALARM_POOL.borrow(cs).borrow_mut();

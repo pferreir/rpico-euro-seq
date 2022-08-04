@@ -120,8 +120,8 @@ macro_rules! impl_overlay {
             fn run<'u>(
                 &'u mut self,
             ) -> Result<
-                Option<Box<dyn FnOnce(&mut $p<'t, B, TS, D, TI>, &mut TI) -> Result<(), StdlibError<B>>>>,
-                StdlibError<B>,
+                Option<Box<dyn FnOnce(&mut $p<'t, B, TS, D, TI>, &mut TI) -> Result<(), StdlibError>>>,
+                StdlibError,
             >
             {
                 Ok(None)

@@ -46,15 +46,13 @@ impl<'t, B: BlockDevice + 't, TS: TimeSource + 't> TaskManager<B, TS> {
                 debug(&format!("Running task {}", task.0));
                 tx_channel.send((task.0, match task.1 {
                     TaskType::FileSave(file_name, data) => {
-                        info("SAVING FILE...");
+                        info("Saving file...");
                         let f = DataFile::new(&file_name);
-                        debug("Opening in write mode");
-                        match f.open_write(&mut self.fs, false).await {
+                        let tr = match f.open_write(&mut self.fs, false).await {
                             Ok(mut f) => {
                                 debug("Dumping bytes...");
                                 match f.dump_bytes(&mut self.fs, &data).await {
                                     Ok(()) => {
-                                        info("DONE");
                                         f.close(&mut self.fs).unwrap();
                                         TaskResult::Done
                                     }
@@ -69,9 +67,10 @@ impl<'t, B: BlockDevice + 't, TS: TimeSource + 't> TaskManager<B, TS> {
                                 error(&format!("Error opening: {:?}", e));
                                 TaskResult::Error("Error writing file".into())
                             }
-                        }
+                        };
+                        tr
                     }
-                })).await.duwrp()
+                })).await.duwrp();
             }
         }
     }

@@ -63,7 +63,7 @@ async fn list_files<D: BlockDevice, TS: TimeSource, T: File<Closed>>(
     volume: &Volume,
     dir: &Directory,
     page: u32,
-) -> Result<Vec<T, 16>, StdlibError<D>> {
+) -> Result<Vec<T, 16>, StdlibError> {
     let mut res = Vec::new();
     let start = page * 16;
     let end = (page + 1) * 16;
@@ -78,33 +78,27 @@ async fn list_files<D: BlockDevice, TS: TimeSource, T: File<Closed>>(
             }
             idx += 1
         })
-        .await
-        .map_err(StdlibError::Device)?;
+        .await;
     Ok(res)
 }
 
 impl<D: BlockDevice, TS: TimeSource> FileSystem<D, TS> {
-    pub async fn new(block_device: D, timesource: TS) -> Result<FileSystem<D, TS>, StdlibError<D>> {
+    pub async fn new(block_device: D, timesource: TS) -> Result<FileSystem<D, TS>, StdlibError> {
         let mut controller = Controller::new(block_device, timesource);
         let volume = controller
             .get_volume(VolumeIdx(0))
-            .await
-            .map_err(StdlibError::Device)?; // always volume 0
+            .await?;
         let root_dir = controller
-            .open_root_dir(&volume)
-            .map_err(StdlibError::Device)?;
+            .open_root_dir(&volume)?;
         let cfg_dir = controller
             .open_dir(&volume, &root_dir, "cfg")
-            .await
-            .map_err(StdlibError::Device)?;
+            .await?;
         let data_dir = controller
             .open_dir(&volume, &root_dir, "data")
-            .await
-            .map_err(StdlibError::Device)?;
+            .await?;
         let bin_dir = controller
             .open_dir(&volume, &root_dir, "bin")
-            .await
-            .map_err(StdlibError::Device)?;
+            .await?;
         Ok(Self {
             controller,
             volume,
@@ -117,7 +111,7 @@ impl<D: BlockDevice, TS: TimeSource> FileSystem<D, TS> {
     pub async fn list_data_files<'t>(
         &'t mut self,
         page: u32,
-    ) -> Result<Vec<DataFile<Closed>, 16>, StdlibError<D>> {
+    ) -> Result<Vec<DataFile<Closed>, 16>, StdlibError> {
         list_files::<D, TS, DataFile<Closed>>(
             &mut self.controller,
             &self.volume,
@@ -130,7 +124,7 @@ impl<D: BlockDevice, TS: TimeSource> FileSystem<D, TS> {
     pub async fn list_bin_files<'t>(
         &'t mut self,
         page: u32,
-    ) -> Result<Vec<BinFile<Closed>, 16>, StdlibError<D>> {
+    ) -> Result<Vec<BinFile<Closed>, 16>, StdlibError> {
         list_files::<D, TS, BinFile<Closed>>(
             &mut self.controller,
             &self.volume,
@@ -143,7 +137,7 @@ impl<D: BlockDevice, TS: TimeSource> FileSystem<D, TS> {
     pub async fn list_cfg_files<'t>(
         &'t mut self,
         page: u32,
-    ) -> Result<Vec<ConfigFile<Closed>, 16>, StdlibError<D>> {
+    ) -> Result<Vec<ConfigFile<Closed>, 16>, StdlibError> {
         list_files::<D, TS, ConfigFile<Closed>>(
             &mut self.controller,
             &self.volume,
@@ -160,11 +154,11 @@ async fn open_file<D: BlockDevice, TS: TimeSource, F: File<Closed>>(
     file: F,
     dir: &Directory,
     mode: Mode,
-) -> Result<FATFile, StdlibErrorFileWrapper<D, F>> {
+) -> Result<FATFile, StdlibErrorFileWrapper<F>> {
     controller
         .open_file_in_dir(volume, dir, &file.file_name(), mode)
         .await
-        .map_err(|e| StdlibErrorFileWrapper(StdlibError::Device(e), file))
+        .map_err(|e| StdlibErrorFileWrapper(e.into(), file))
 }
 
 macro_rules! file_dir {
@@ -236,14 +230,14 @@ macro_rules! file_impl {
         impl<S: FileState> Debug for $s<S> {
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 f.write_str(&self.file_name)
-            }        
+            }
         }
 
         impl $s<Closed> {
             pub async fn open_read<D: BlockDevice, TS: TimeSource>(
                 self,
                 fs: &mut FileSystem<D, TS>,
-            ) -> Result<$s<OpenRead>, StdlibErrorFileWrapper<D, $s<Closed>>> {
+            ) -> Result<$s<OpenRead>, StdlibErrorFileWrapper<$s<Closed>>> {
                 let name = self.file_name().clone();
                 let f = open_file(
                     &mut fs.controller,
@@ -261,7 +255,7 @@ macro_rules! file_impl {
                 self,
                 fs: &mut FileSystem<D, TS>,
                 replace: bool,
-            ) -> Result<$s<OpenWrite>, StdlibErrorFileWrapper<D, $s<Closed>>> {
+            ) -> Result<$s<OpenWrite>, StdlibErrorFileWrapper<$s<Closed>>> {
                 let name = self.file_name().clone();
                 let f = open_file(
                     &mut fs.controller,
@@ -285,13 +279,12 @@ macro_rules! file_impl {
                 &mut self,
                 fs: &mut FileSystem<D, TS>,
                 data: &S,
-            ) -> Result<(), StdlibError<D>> {
+            ) -> Result<(), StdlibError> {
                 let mut buffer = [0u8; FILE_BUFFER_SIZE];
-                into_writer(data, &mut buffer[..]).map_err(StdlibError::<D>::Serialization)?;
+                into_writer(data, &mut buffer[..])?;
                 fs.controller
                     .write(&mut fs.volume, self.handle_mut().unwrap(), &buffer)
-                    .await
-                    .map_err(StdlibError::<D>::Device)?;
+                    .await?;
                 Ok(())
             }
 
@@ -299,21 +292,19 @@ macro_rules! file_impl {
                 &mut self,
                 fs: &mut FileSystem<D, TS>,
                 data: &[u8],
-            ) -> Result<(), StdlibError<D>> {
+            ) -> Result<(), StdlibError> {
                 fs.controller
                     .write(&mut fs.volume, self.handle_mut().unwrap(), data)
-                    .await
-                    .map_err(StdlibError::<D>::Device)?;
+                    .await?;
                 Ok(())
             }
 
             pub fn close<D: BlockDevice, TS: TimeSource>(
                 &mut self,
                 fs: &mut FileSystem<D, TS>,
-            ) -> Result<(), StdlibError<D>> {
+            ) -> Result<(), StdlibError> {
                 fs.controller
-                    .close_file(&mut fs.volume, self.handle.take().unwrap())
-                    .map_err(StdlibError::Device)?;
+                    .close_file(&mut fs.volume, self.handle.take().unwrap())?;
                 Ok(())
             }
         }
@@ -322,23 +313,21 @@ macro_rules! file_impl {
             pub async fn load<'t, D: BlockDevice, TS: TimeSource, DS: DeserializeOwned>(
                 &'t mut self,
                 fs: &'t mut FileSystem<D, TS>,
-            ) -> Result<DS, StdlibError<D>> {
+            ) -> Result<DS, StdlibError> {
                 let mut buffer = [0u8; FILE_BUFFER_SIZE];
                 fs.controller
                     .read(&fs.volume, self.handle_mut().unwrap(), &mut buffer)
-                    .await
-                    .map_err(StdlibError::<D>::Device)?;
+                    .await?;
                 let res: Result<DS, _> = from_reader(&buffer[..]);
-                Ok(res.map_err(StdlibError::Deserialization)?)
+                Ok(res?)
             }
 
             pub fn close<D: BlockDevice, TS: TimeSource>(
                 &mut self,
                 fs: &mut FileSystem<D, TS>,
-            ) -> Result<(), StdlibError<D>> {
+            ) -> Result<(), StdlibError> {
                 fs.controller
-                    .close_file(&mut fs.volume, self.handle.take().unwrap())
-                    .map_err(StdlibError::Device)?;
+                    .close_file(&mut fs.volume, self.handle.take().unwrap())?;
                 Ok(())
             }
         }

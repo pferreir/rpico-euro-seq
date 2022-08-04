@@ -1,6 +1,6 @@
 use core::{cell::RefCell, ops::DerefMut};
 
-use cortex_m::interrupt::{free, CriticalSection, Mutex};
+use critical_section::{with, CriticalSection, Mutex};
 use embedded_hal::digital::v2::InputPin;
 use heapless::spsc::Queue;
 use rp2040_hal::{
@@ -62,14 +62,14 @@ impl<SW1: PinId + BankPinId, SW2: PinId + BankPinId> Switches<SW1, SW2> {
     }
 }
 
-fn handle_switch_interrupt(cs: &CriticalSection, pac: &mut Peripherals) {
+fn handle_switch_interrupt(cs: CriticalSection, pac: &mut Peripherals) {
     if let Some(ref mut switches) = SWITCHES.borrow(cs).borrow_mut().deref_mut() {
         switches.refresh_switches();
     }
 }
 
 pub fn init_switches(sw1: Pin<Gpio2, PullUpInput>, sw2: Pin<Gpio3, PullUpInput>) {
-    free(|cs| {
+    with(|cs| {
         SWITCHES.borrow(cs).replace(Some(Switches::new(sw1, sw2)));
     });
 }
@@ -86,7 +86,7 @@ pub fn init_interrupts(pac: &mut Peripherals) {
     });
 }
 
-pub fn handle_irq(cs: &CriticalSection, pac: &mut Peripherals) {
+pub fn handle_irq(cs: CriticalSection, pac: &mut Peripherals) {
     let reg_r = pac.IO_BANK0.intr[0].read();
 
     if reg_r.gpio2_edge_high().bit() {

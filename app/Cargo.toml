@@ -26,10 +26,10 @@ mcp49xx = "0.2.0"
 rotary-encoder-embedded = "^0.1"
 embedded-dma = "^0.2"
 voice_lib = { path = "../voice_lib" }
-cassette = "^0.2.3"
 tinybmp = "^0.3.3"
 futures = { version = "^0.3", default-features = false }
-
+embassy-executor = { path = "../../../../3rd/embassy/embassy-executor" }
+embassy-util = { path = "../../../../3rd/embassy/embassy-util" }
 logic = { path = "../logic" }
 shared-bus = { version = "^0.2" }
 critical-section = { package = "critical-section", version = "=1.0.0-alpha.2", features = ["restore-state-u8"] }

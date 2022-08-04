@@ -80,7 +80,7 @@ impl<'t> MonoRecorderBox<'t> {
         self.file.set_name(file_name);
     }
 
-    pub(crate) fn save_file<B: BlockDevice, TS: TimeSource>(&mut self) -> Result<TaskType, StdlibError<B>> {
+    pub(crate) fn save_file(&mut self) -> Result<TaskType, StdlibError> {
         Ok(self.file.save()?)
     }
 }

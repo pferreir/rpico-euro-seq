@@ -1,5 +1,5 @@
 use crate::{stdlib::{
-    Closed, ConfigFile, DataFile, File, FileSystem, OpenWrite, StdlibError, StdlibErrorFileWrapper,
+    Closed, ConfigFile, DataFile, File, FileSystem, OpenWrite, StdlibError, StdlibErrorFileWrapper, FSError,
 }, log};
 use embedded_sdmmc::{BlockDevice, Error as ESDMMCError, TimeSource};
 use serde::{Deserialize, Serialize};
@@ -20,7 +20,7 @@ impl Default for Config {
 impl Config {
     pub(crate) async fn load<D: BlockDevice, TS: TimeSource>(
         fs: &mut FileSystem<D, TS>,
-    ) -> Result<Self, StdlibError<D>> {
+    ) -> Result<Self, StdlibError> {
         let cf = ConfigFile::new("config.rmp");
 
         Ok(match cf.open_read(fs).await {
@@ -30,7 +30,7 @@ impl Config {
                 f.close(fs)?;
                 config
             }
-            Err(StdlibErrorFileWrapper(StdlibError::Device(ESDMMCError::FileNotFound), f)) => {
+            Err(StdlibErrorFileWrapper(StdlibError::FS(FSError::FileNotFound), f)) => {
                 log::info("Creating new config file");
                 let config = Config::default();
                 let mut f: ConfigFile<OpenWrite> = f

@@ -1,9 +1,8 @@
 use core::cell::{RefCell, RefMut};
-use core::convert::Infallible;
 use core::fmt::Debug;
 use core::marker::PhantomData;
 
-use cortex_m::interrupt::{free, Mutex};
+use critical_section::{Mutex, with};
 use embedded_hal::blocking::spi::Write;
 use embedded_hal::digital::v2::{OutputPin, PinState};
 use logic::stdlib::{CVChannel, CVChannelId, Channel, GateChannel, GateChannelId, Output};
@@ -16,7 +15,6 @@ use rp2040_hal::gpio::{
     pin::{bank0::BankPinId, FunctionSpi},
     Pin, PinId,
 };
-use rp2040_hal::pac::RESETS;
 
 use voice_lib::{InvalidNotePair, NotePair};
 
@@ -119,7 +117,6 @@ where
     SPI::Error: Debug,
 {
     pub fn new(
-        resets: &mut RESETS,
         // DAC
         spi: SPI,
         _clk: Pin<CLK, FunctionSpi>,
@@ -140,7 +137,7 @@ where
     }
 
     pub fn update(&mut self) {
-        let ((gate0, cv0), (gate1, cv1)) = free(|cs| {
+        let ((gate0, cv0), (gate1, cv1)) = with(|cs| {
             let v = OUTPUTS.borrow(cs).borrow();
             let out = v.as_ref().unwrap();
             ((out.0 .0 .0, out.0 .1 .0), (out.1 .0 .0, out.1 .1 .0))
@@ -170,7 +167,7 @@ pub struct GateCVProxy;
 
 impl GateCVProxy {
     pub fn new() -> Self {
-        free(|cs| {
+        with(|cs| {
             *OUTPUTS.borrow(cs).borrow_mut() = Some((
                 (Default::default(), Default::default()),
                 (Default::default(), Default::default()),
@@ -182,7 +179,7 @@ impl GateCVProxy {
 
 impl<'t> Output<DACVoltage, InvalidNotePair> for GateCVProxy {
     fn set_gate(&mut self, id: GateChannelId, value: bool) {
-        free(|cs| {
+        with(|cs| {
             let mut val = OUTPUTS.borrow(cs).borrow_mut();
             let v = val.as_mut().unwrap();
 
@@ -198,7 +195,7 @@ impl<'t> Output<DACVoltage, InvalidNotePair> for GateCVProxy {
     }
 
     fn set_cv(&mut self, id: logic::stdlib::CVChannelId, value: DACVoltage) {
-        free(|cs| {
+        with(|cs| {
             let mut val = OUTPUTS.borrow(cs).borrow_mut();
             let v = val.as_mut().unwrap();
             match id {

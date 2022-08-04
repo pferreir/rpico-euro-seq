@@ -1,6 +1,6 @@
 use core::cell::RefCell;
 use alloc::format;
-use cortex_m::interrupt::{free, CriticalSection, Mutex};
+use critical_section::{Mutex, with, CriticalSection};
 use defmt::debug;
 use embedded_midi::{MidiIn as DriverMidiIn, MidiMessage};
 use embedded_time::rate::{Baud, Hertz};
@@ -99,7 +99,7 @@ pub fn init_midi_in(
         )
         .unwrap();
     let midi_in = MidiIn::new(uart);
-    free(|cs| {
+    with(|cs| {
         let mut singleton = MIDI_IN.borrow(cs).borrow_mut();
         singleton.replace(midi_in);
     });
@@ -115,7 +115,7 @@ pub fn init_interrupts(pac: &mut Peripherals) {
     unsafe { pac.UART0.uartifls.modify(|_, w| w.rxiflsel().bits(0)) };
 }
 
-pub fn handle_irq(cs: &CriticalSection, pac: &mut Peripherals) {
+pub fn handle_irq(cs: CriticalSection, pac: &mut Peripherals) {
     let r = pac.UART0.uartmis.read();
     if !r.rxmis().bit_is_set() && !r.rtmis().bit_is_set() {
         return;

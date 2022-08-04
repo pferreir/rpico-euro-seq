@@ -1,16 +1,16 @@
 use core::cell::RefCell;
 
-use cortex_m::interrupt::{CriticalSection, Mutex};
+use critical_section::{Mutex, CriticalSection};
 use defmt::{error, trace};
 use rp2040_hal::pac::Peripherals;
 
 use crate::alarms::{fire_alarm, AlarmArgs};
 
-static DEBOUNCE_CALLBACKS: Mutex<RefCell<[Option<fn(&CriticalSection, &mut Peripherals)>; 4]>> =
+static DEBOUNCE_CALLBACKS: Mutex<RefCell<[Option<fn(CriticalSection, &mut Peripherals)>; 4]>> =
     Mutex::new(RefCell::new([None; 4]));
 
 pub fn debounce_callback(
-    cs: &CriticalSection,
+    cs: CriticalSection,
     pac: &mut Peripherals,
     args: AlarmArgs,
     alarm_id: u8,
@@ -45,12 +45,12 @@ pub fn debounce_callback(
 }
 
 pub fn debounce(
-    cs: &CriticalSection,
+    cs: CriticalSection,
     pac: &mut Peripherals,
     num_slice: u8,
     num_pin: u8,
     time: u32,
-    callback: fn(&CriticalSection, &mut Peripherals),
+    callback: fn(CriticalSection, &mut Peripherals),
 ) {
     // disable interrupt
     pac.IO_BANK0.proc0_inte[num_slice as usize].modify(|r, w| {

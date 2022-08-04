@@ -1,6 +1,6 @@
 use core::{cell::RefCell, marker::PhantomData, ops::DerefMut};
 
-use cortex_m::interrupt::{free, CriticalSection, Mutex};
+use critical_section::{Mutex, with, CriticalSection};
 use defmt::trace;
 use heapless::spsc::Queue;
 use rotary_encoder_embedded::{Direction, RotaryEncoder};
@@ -95,20 +95,20 @@ pub fn init_encoder(
     clk: Pin<Gpio22, FloatingInput>,
     switch: Pin<Gpio0, FloatingInput>,
 ) {
-    free(|cs| {
+    with(|cs| {
         ROTARY_ENCODER
             .borrow(cs)
             .replace(Some(Encoder::new(dt, clk, switch)));
     });
 }
 
-fn handle_encoder_interrupt(cs: &CriticalSection) {
+fn handle_encoder_interrupt(cs: CriticalSection) {
     if let Some(ref mut rotary_encoder) = ROTARY_ENCODER.borrow(cs).borrow_mut().deref_mut() {
         rotary_encoder.handle_turn();
     }
 }
 
-fn handle_switch_interrupt(cs: &CriticalSection, state: bool) {
+fn handle_switch_interrupt(cs: CriticalSection, state: bool) {
     if let Some(ref mut rotary_encoder) = ROTARY_ENCODER.borrow(cs).borrow_mut().deref_mut() {
         rotary_encoder.handle_switch(state);
     }
@@ -131,7 +131,7 @@ pub fn init_interrupts(pac: &mut Peripherals) {
     });
 }
 
-pub fn handle_irq(cs: &CriticalSection, pac: &mut Peripherals) {
+pub fn handle_irq(cs: CriticalSection, pac: &mut Peripherals) {
     let reg_s = pac.IO_BANK0.proc0_ints[0].read();
 
     trace!("--- GPIO_IRQ ---");

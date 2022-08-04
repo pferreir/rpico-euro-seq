@@ -35,7 +35,7 @@ impl SequenceFile {
     pub(crate) async fn load<D: BlockDevice, TS: TimeSource>(
         &self,
         fs: &mut FileSystem<D, TS>,
-    ) -> Result<Self, StdlibError<D>> {
+    ) -> Result<Self, StdlibError> {
         let df = self._load_data_file();
         match df.open_read(fs).await {
             Ok(mut f) => {
@@ -49,12 +49,12 @@ impl SequenceFile {
         }
     }
 
-    pub(crate) fn save<D: BlockDevice>(
+    pub(crate) fn save(
         &self,
-    ) -> Result<TaskType, StdlibError<D>> {
+    ) -> Result<TaskType, StdlibError> {
         let mut buffer = [0u8; FILE_BUFFER_SIZE];
         debug("Serializing data...");
-        into_writer(self, &mut buffer[..]).map_err(StdlibError::<D>::Serialization)?;
+        into_writer(self, &mut buffer[..])?;
         debug("done");
 
         let mut file_name = String::<12>::new();

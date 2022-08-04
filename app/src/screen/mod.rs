@@ -10,8 +10,9 @@ use core::{
 
 use cortex_m::{
     delay::Delay,
-    interrupt::{free, CriticalSection, Mutex},
 };
+use critical_section::{Mutex, with, CriticalSection};
+use embassy_util::waitqueue::AtomicWaker;
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::*};
 pub use framebuffer::Framebuffer;
 use logic::screen::{SCREEN_HEIGHT, SCREEN_WIDTH};
@@ -40,6 +41,8 @@ pub type ScreenDriverWithPins = ST7735<
 pub const SPI_DEVICE_READY: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(true));
 pub const DMA_READY: Mutex<RefCell<bool>> = Mutex::new(RefCell::new(true));
 
+static DMA_WAKER: AtomicWaker = AtomicWaker::new();
+
 pub struct PollFuture<F: Fn() -> bool> {
     f: F,
 }
@@ -48,11 +51,12 @@ impl<F: Fn() -> bool> Future for PollFuture<F> {
 
     fn poll(
         self: core::pin::Pin<&mut Self>,
-        _cx: &mut core::task::Context<'_>,
+        cx: &mut core::task::Context<'_>,
     ) -> Poll<Self::Output> {
         if (self.f)() {
             Poll::Ready(())
         } else {
+            DMA_WAKER.register(cx.waker());
             Poll::Pending
         }
     }
@@ -126,7 +130,7 @@ pub async fn trigger_dma_transfer<SPI: SpiDevice>(
     spi: &SPI,
     (ptr, len): (u32, u32),
 ) {
-    free(|cs| {
+    with(|cs| {
         let singleton = DMA_READY;
         let mut ready = singleton.borrow(cs).borrow_mut();
         *ready = false;
@@ -141,7 +145,7 @@ pub async fn trigger_dma_transfer<SPI: SpiDevice>(
     // wait
 
     loop {
-        let ready = free(|cs| {
+        let ready = with(|cs| {
             let singleton = DMA_READY;
             let ready = singleton.borrow(cs).borrow();
             *ready
@@ -167,7 +171,7 @@ pub async fn refresh<SPI: SpiDevice>(
     screen_driver: &mut ScreenDriverWithPins,
     delay: &mut cortex_m::delay::Delay,
 ) {
-    free(|cs| {
+    with(|cs| {
         let singleton = SPI_DEVICE_READY;
         let mut ready = singleton.borrow(cs).borrow_mut();
         *ready = false;
@@ -197,7 +201,7 @@ pub fn init_interrupts(pac: &mut Peripherals) {
     pac.DMA.inte0.modify(|_, w| unsafe { w.bits(0x1) });
 }
 
-pub fn handle_spi_irq(cs: &CriticalSection, pac: &mut Peripherals) {
+pub fn handle_spi_irq(cs: CriticalSection, pac: &mut Peripherals) {
     let singleton = SPI_DEVICE_READY;
     let mut ready = singleton.borrow(cs).borrow_mut();
     let reg = pac.SPI0.sspmis.read();
@@ -208,9 +212,11 @@ pub fn handle_spi_irq(cs: &CriticalSection, pac: &mut Peripherals) {
 }
 
 #[inline(never)]
-pub fn handle_dma_irq(cs: &CriticalSection, pac: &mut Peripherals) {
+pub fn handle_dma_irq(cs: CriticalSection, pac: &mut Peripherals) {
     let singleton = DMA_READY;
     let mut ready = singleton.borrow(cs).borrow_mut();
+
+    DMA_WAKER.wake();
 
     if (pac.DMA.ints0.read().bits() & 0x1) > 0 {
         *ready = true;

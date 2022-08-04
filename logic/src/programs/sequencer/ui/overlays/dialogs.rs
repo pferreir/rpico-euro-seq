@@ -64,8 +64,8 @@ impl<
     fn run<'u>(
         &'u mut self,
     ) -> Result<
-        Option<Box<dyn FnOnce(&mut P, &mut TI) -> Result<(), StdlibError<B>> + 'u>>,
-        StdlibError<B>,
+        Option<Box<dyn FnOnce(&mut P, &mut TI) -> Result<(), StdlibError> + 'u>>,
+        StdlibError,
     > {
         todo!()
     }
@@ -204,10 +204,10 @@ where
             dyn FnOnce(
                     &mut SequencerProgram<'t, B, TS, T, TI>,
                     &mut TI,
-                ) -> Result<(), StdlibError<B>>
+                ) -> Result<(), StdlibError>
                 + 'u,
         >>,
-        StdlibError<B>,
+        StdlibError,
     > {
         if self.save {
             self.save = false;

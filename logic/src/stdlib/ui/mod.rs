@@ -43,8 +43,8 @@ pub trait Overlay<
     fn run<'u>(
         &'u mut self,
     ) -> Result<
-        Option<Box<dyn FnOnce(&mut P, &mut TI) -> Result<(), StdlibError<B>> + 'u>>,
-        StdlibError<B>,
+        Option<Box<dyn FnOnce(&mut P, &mut TI) -> Result<(), StdlibError> + 'u>>,
+        StdlibError,
     >;
     fn draw(&self, target: &mut D) -> Result<(), D::Error>;
 }

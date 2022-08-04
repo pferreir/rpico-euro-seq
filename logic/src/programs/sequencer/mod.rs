@@ -89,7 +89,7 @@ where
         }
     }
 
-    pub(crate) fn process_input(&mut self, msg: &UIInputEvent) -> Result<bool, ProgramError<B>> {
+    pub(crate) fn process_input(&mut self, msg: &UIInputEvent) -> Result<bool, ProgramError> {
         let mut overlays = self.stack.take().unwrap();
         let res = match overlays.last_mut() {
             Some(o) => {
@@ -185,14 +185,14 @@ impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>, TI: Task
 where
     <D as DrawTarget>::Error: Debug,
 {
-    fn save(&mut self, file_name: String<12>) -> Result<TaskType, StdlibError<B>> {
+    fn save(&mut self, file_name: String<12>) -> Result<TaskType, StdlibError> {
         self.recorder.set_file_name(&file_name);
-        self.recorder.save_file::<B, TS>()
+        self.recorder.save_file()
     }
 
     fn _check_task_returns(&mut self, task_iface: &mut impl TaskInterface) {
         while let Ok(Some((id, result))) = task_iface.pop() {
-            info(&format!("{} {:?}", id, result));
+            info(&format!("Task {} result: {:?}", id, result));
         }
     }
 }
@@ -241,7 +241,7 @@ where
         self.overlay_manager.replace(overlay_manager);
     }
 
-    fn process_ui_input<'u>(&'u mut self, msg: &'u UIInputEvent) -> Result<(), ProgramError<B>>
+    fn process_ui_input<'u>(&'u mut self, msg: &'u UIInputEvent) -> Result<(), ProgramError>
     where
         't: 'u,
     {

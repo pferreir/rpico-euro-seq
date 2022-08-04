@@ -24,8 +24,8 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub enum ProgramError<D: BlockDevice> {
-    Stdlib(StdlibError<D>),
+pub enum ProgramError {
+    Stdlib(StdlibError),
 }
 
 pub trait Program<
@@ -38,7 +38,7 @@ pub trait Program<
 {
     fn new() -> Self;
     fn process_midi(&mut self, msg: &MidiMessage) {}
-    fn process_ui_input<'u>(&'u mut self, msg: &'u UIInputEvent) -> Result<(), ProgramError<B>>
+    fn process_ui_input<'u>(&'u mut self, msg: &'u UIInputEvent) -> Result<(), ProgramError>
     where
         't: 'u,
         <D as DrawTarget>::Error: Debug;

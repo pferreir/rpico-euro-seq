@@ -68,7 +68,7 @@ where
         }
     }
 
-    fn process_ui_input<'u>(&mut self, msg: &'u UIInputEvent) -> Result<(), ProgramError<B>>
+    fn process_ui_input<'u>(&mut self, msg: &'u UIInputEvent) -> Result<(), ProgramError>
     where
         't: 'u,
         <D as DrawTarget>::Error: Debug,

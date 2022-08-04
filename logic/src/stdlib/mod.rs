@@ -4,7 +4,7 @@ mod output;
 mod tasks;
 pub mod ui;
 
-pub use errors::{StdlibError, StdlibErrorFileWrapper};
+pub use errors::{StdlibError, StdlibErrorFileWrapper, FSError};
 pub use files::{
     BinFile, Closed, ConfigFile, DataFile, File, FileState, FileSystem, OpenRead, OpenWrite,
 };
