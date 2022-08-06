@@ -312,13 +312,6 @@ fn main() -> ! {
         pins.gpio3.into_pull_up_input(),
     );
 
-    init_interrupts(&mut timer);
-
-    with(|cs| {
-        let mut timer_singleton = TIMER.borrow(cs).borrow_mut();
-        timer_singleton.replace(timer);
-    });
-
     let prog_queue = singleton!(: mpmc::Channel<CriticalSectionRawMutex, TaskReturn, 16> = mpmc::Channel::new()).unwrap();
     let tm_queue = singleton!(: mpmc::Channel<CriticalSectionRawMutex, Task, 16> = mpmc::Channel::new()).unwrap();
     let (tm_send, prog_recv) = (prog_queue.sender(), prog_queue.receiver());
@@ -355,6 +348,13 @@ fn main() -> ! {
         );
 
         run_executor(1, fut);
+    });
+
+    init_interrupts(&mut timer);
+
+    with(|cs| {
+        let mut timer_singleton = TIMER.borrow(cs).borrow_mut();
+        timer_singleton.replace(timer);
     });
 
     // enable IRQs
