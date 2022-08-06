@@ -3,6 +3,7 @@ use core::fmt::Debug;
 use core::marker::PhantomData;
 
 use critical_section::{Mutex, with};
+use defmt::trace;
 use embedded_hal::blocking::spi::Write;
 use embedded_hal::digital::v2::{OutputPin, PinState};
 use logic::stdlib::{CVChannel, CVChannelId, Channel, GateChannel, GateChannelId, Output};

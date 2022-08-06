@@ -1,14 +1,13 @@
 use core::fmt::{Debug, Display};
-use core::task::Poll;
 
 use alloc::{borrow::ToOwned, format, string::String};
-use critical_section::with;
-use defmt::{trace, debug};
+use embassy_executor::time::{Timer, Duration};
 use embassy_util::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_util::waitqueue::AtomicWaker;
+use embassy_util::channel::signal::Signal;
 use embedded_hal::blocking::spi::{Transfer, Write};
 use embedded_sdmmc::sdmmc::{Error as ESCMMCSPIError, SdMmcSpi};
-use futures::{future::join, Sink, Stream};
+use futures::StreamExt;
+use futures::{future::join};
 use logic::stdlib::{
     FileSystem, StdlibError, Task, TaskId, TaskInterface, TaskManager, TaskReturn, TaskType,
 };
@@ -18,13 +17,13 @@ use rp2040_hal::gpio::{
 };
 use shared_bus::BusManagerSimple;
 
-use crate::mpmc::{self, TryRecvError, Receiver};
+use crate::debounce::DebounceCallback;
+use crate::{debounce, mpmc::{self, TryRecvError}};
 use crate::{
     gate_cv::{self, GateCVOutWithPins},
     DummyTime,
 };
 
-static TASK_WAKER: AtomicWaker = AtomicWaker::new();
 
 fn format_spi_error<'t>(e: &ESCMMCSPIError) -> String {
     match e {
@@ -51,7 +50,6 @@ fn format_spi_error<'t>(e: &ESCMMCSPIError) -> String {
     }
 }
 
-
 pub struct EmbeddedTaskInterface<'t> {
     consumer: mpmc::Receiver<'t, CriticalSectionRawMutex, TaskReturn, 16>,
     producer: mpmc::Sender<'t, CriticalSectionRawMutex, Task, 16>,
@@ -61,7 +59,7 @@ pub struct EmbeddedTaskInterface<'t> {
 #[derive(Debug)]
 pub enum TaskInterfaceError {
     QueueFull,
-    TryRecvError(TryRecvError)
+    TryRecvError(TryRecvError),
 }
 
 impl<'t> EmbeddedTaskInterface<'t> {
@@ -82,18 +80,21 @@ impl<'t> TaskInterface for EmbeddedTaskInterface<'t> {
 
     fn submit(&mut self, task_type: TaskType) -> Result<TaskId, Self::Error> {
         let id = self.id_count;
-        debug!("Submit {:?}", id);
         self.id_count += 1;
-        let res = self.producer
+        let res = self
+            .producer
             .try_send(Task(id, task_type))
             .map_err(|_| TaskInterfaceError::QueueFull)
             .map(|_| id);
-        TASK_WAKER.wake();
         res
     }
 
     fn pop(&mut self) -> Result<Option<TaskReturn>, Self::Error> {
-        Ok(Some(self.consumer.try_recv().map_err(TaskInterfaceError::TryRecvError)?))
+        Ok(Some(
+            self.consumer
+                .try_recv()
+                .map_err(TaskInterfaceError::TryRecvError)?,
+        ))
     }
 }
 
@@ -104,6 +105,15 @@ where
 {
     loop {
         output.update();
+        Timer::after(Duration::from_millis(1000)).await;
+    }
+}
+
+async fn debouncing_task<'t>(
+    mut rx: mpmc::Receiver<'t, CriticalSectionRawMutex, (u8, u8, DebounceCallback), 16>,
+) {
+    while let Some((num_slice, num_pin, callback)) = rx.next().await {
+        debounce::debounce(num_slice, num_pin, callback).await;
     }
 }
 
@@ -122,9 +132,11 @@ impl Display for TaskManagerTaskError {
     }
 }
 
-pub async fn task_manager<'t, SPI: Transfer<u8> + Write<u8> + 't>(
-    mut rx: mpmc::Receiver<'t, CriticalSectionRawMutex, Task, 16>,
-    mut tx: mpmc::Sender<'t, CriticalSectionRawMutex, TaskReturn, 16>,
+pub async fn core1_task<'t, SPI: Transfer<u8> + Write<u8> + 't>(
+    ready_signal: &Signal<bool>,
+    mut rx_tasks: mpmc::Receiver<'t, CriticalSectionRawMutex, Task, 16>,
+    mut tx_task_results: mpmc::Sender<'t, CriticalSectionRawMutex, TaskReturn, 16>,
+    rx_debounces: mpmc::Receiver<'t, CriticalSectionRawMutex, (u8, u8, DebounceCallback), 16>,
     spi_bus: BusManagerSimple<SPI>,
     (clk, _miso, mosi, cs_out, cs_mmc, gate1, gate2): (
         Pin<Gpio10, FunctionSpi>,
@@ -148,8 +160,6 @@ where
         .map_err(TaskManagerTaskError::Stdlib)?;
     let mut task_manager = TaskManager::new(fs);
 
-    debug!("Running tasks...");
-
     let output = gate_cv::GateCVOut::new(
         // DAC
         spi_bus.acquire_spi(),
@@ -161,10 +171,15 @@ where
         gate2,
     );
 
-    //join(
-        task_manager.run_tasks(&mut rx, &mut tx)
-        //update_output(output),
-    //)
+    ready_signal.signal(true);
+
+    join(
+        task_manager.run_tasks(&mut rx_tasks, &mut tx_task_results),
+        join(
+            debouncing_task(rx_debounces),
+            update_output(output),
+        )
+    )
     .await;
 
     Ok(())

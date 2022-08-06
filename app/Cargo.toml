@@ -28,12 +28,13 @@ embedded-dma = "^0.2"
 voice_lib = { path = "../voice_lib" }
 tinybmp = "^0.3.3"
 futures = { version = "^0.3", default-features = false }
-embassy-executor = { path = "../../../../3rd/embassy/embassy-executor" }
+embassy-executor = { path = "../../../../3rd/embassy/embassy-executor", features = ["time-tick-1mhz"] }
 embassy-util = { path = "../../../../3rd/embassy/embassy-util" }
 logic = { path = "../logic" }
 shared-bus = { version = "^0.2" }
-critical-section = { package = "critical-section", version = "=1.0.0-alpha.2", features = ["restore-state-u8"] }
+critical-section = { version = "=1.0.0-alpha.2", features = ["restore-state-u8"] }
 linked_list_allocator = { version = "0.10.1", default-features = false, features = ["const_mut_refs"] }
+atomic-polyfill = { version = "^0.1", features = [] }
 
 [profile.release]
 codegen-units = 1

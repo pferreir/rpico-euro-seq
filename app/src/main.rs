@@ -8,21 +8,23 @@ extern crate alloc;
 
 mod alarms;
 mod allocator;
+mod core1;
 mod debounce;
 mod encoder;
 mod gate_cv;
 mod midi_in;
-mod screen;
 mod mpmc;
+mod screen;
 mod switches;
-mod task_queues;
 
-use alloc::{borrow::ToOwned, format, string::String};
 use allocator::CortexMHeap;
-use critical_section::{Mutex, with};
-use embassy_util::blocking_mutex::raw::CriticalSectionRawMutex;
 use core::{alloc::Layout, fmt::Debug};
+use critical_section::{with, Mutex};
+use debounce::DebounceCallback;
 use embassy_executor::executor::{raw::TaskPool, Executor};
+use embassy_executor::time::TICKS_PER_SECOND;
+use embassy_util::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_util::channel::signal::Signal;
 use futures::Future;
 use gate_cv::GateCVProxy;
 
@@ -32,22 +34,20 @@ use shared_bus::{BusManagerSimple, NullMutex, SpiProxy};
 
 use core::{cell::RefCell, convert::Into, ops::DerefMut};
 
-use cortex_m::{
-    singleton,
-};
-use cortex_m_rt::entry;
+use cortex_m::singleton;
 use defmt::*;
 use defmt_rtt as _;
 use panic_probe as _;
 
 use embedded_graphics::{pixelcolor::Rgb565, prelude::RgbColor, prelude::*};
-use embedded_hal::blocking::spi::{Transfer, Write};
+use embedded_hal::blocking::spi::Transfer;
 use embedded_hal::spi::{MODE_0, MODE_3};
 use embedded_time::{fixed_point::FixedPoint, rate::Extensions};
 use rp2040_hal as hal;
 
 use hal::{
     clocks::{init_clocks_and_plls, Clock},
+    entry,
     gpio::{
         pin::{bank0::Gpio8, Pin},
         Output, PushPull,
@@ -61,15 +61,13 @@ use hal::{
     Spi, Timer,
 };
 
+use core1::EmbeddedTaskInterface;
 use logic::{
     programs::{self, Program, ProgramError},
     stdlib::{StdlibError, Task, TaskReturn},
     LogLevel,
 };
 use screen::{Framebuffer, ScreenDriverWithPins};
-use task_queues::EmbeddedTaskInterface;
-
-use crate::task_queues::task_manager;
 
 #[link_section = ".boot2"]
 #[no_mangle]
@@ -85,6 +83,10 @@ fn oom(_: Layout) -> ! {
 }
 
 pub static TIMER: Mutex<RefCell<Option<Timer>>> = Mutex::new(RefCell::new(None));
+pub static DEBOUNCE_SENDER: Mutex<
+    RefCell<Option<mpmc::Sender<CriticalSectionRawMutex, (u8, u8, DebounceCallback), 16>>>,
+> = Mutex::new(RefCell::new(None));
+static CORE1_READY_SIGNAL: Signal<bool> = Signal::new();
 
 const PERIPHERAL_FREQ: u32 = 125_000_000u32;
 const EXTERNAL_XTAL_FREQ: u32 = 12_000_000u32;
@@ -162,7 +164,7 @@ where
             Ok(())
         })
         .map_err(|ProgramError::Stdlib(e)| e)?;
-        let prog_time = with(|cs| -> Result<u32, ProgramError> {
+        let prog_time = with(|cs| -> Result<u64, ProgramError> {
             if let Some(switches) = switches::SWITCHES.borrow(cs).borrow_mut().deref_mut() {
                 for msg in switches.iter_messages() {
                     program.process_ui_input(&msg)?;
@@ -172,16 +174,12 @@ where
                 }
             }
 
-            if let Some(timer) = TIMER.borrow(cs).borrow().as_ref() {
-                Ok(((timer.get_counter() / 1000) & 0xffffffff) as u32)
-            } else {
-                panic!("Can't get TIMER!")
-            }
+            Ok(alarms::now() * 1000 / TICKS_PER_SECOND)
         })
         .map_err(|ProgramError::Stdlib(e)| e)?;
 
         with(|_| {
-            program.run(prog_time, &mut task_iface);
+            program.run(prog_time as u32, &mut task_iface);
             program.update_output(&mut output).unwrap();
         });
 
@@ -220,14 +218,16 @@ fn run_executor<F: Future + 'static>(id: u8, f: F) -> ! {
 
 #[entry]
 fn main() -> ! {
+    info!("Program start");
     {
         use core::mem::MaybeUninit;
-        const HEAP_SIZE: usize = 32 * 1024;
+        const HEAP_SIZE: usize = 16 * 1024;
         static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
         unsafe { ALLOCATOR.init(HEAP.as_ptr() as usize, HEAP_SIZE) }
     }
 
-    info!("Program start");
+    debug!("Heap allocated");
+
     let mut pac = pac::Peripherals::take().unwrap();
     let core = pac::CorePeripherals::take().unwrap();
     let mut watchdog = Watchdog::new(pac.WATCHDOG);
@@ -235,7 +235,7 @@ fn main() -> ! {
     // set timer to zero
     pac.TIMER.timehw.write(|w| unsafe { w.bits(0) });
     pac.TIMER.timelw.write(|w| unsafe { w.bits(0) });
-    let mut timer = Timer::new(pac.TIMER, &mut pac.RESETS);
+    let timer = Timer::new(pac.TIMER, &mut pac.RESETS);
 
     // External high-speed crystal on the pico board is 12Mhz
     let external_xtal_freq_hz = EXTERNAL_XTAL_FREQ;
@@ -312,14 +312,61 @@ fn main() -> ! {
         pins.gpio3.into_pull_up_input(),
     );
 
-    let prog_queue = singleton!(: mpmc::Channel<CriticalSectionRawMutex, TaskReturn, 16> = mpmc::Channel::new()).unwrap();
-    let tm_queue = singleton!(: mpmc::Channel<CriticalSectionRawMutex, Task, 16> = mpmc::Channel::new()).unwrap();
+    let prog_queue =
+        singleton!(: mpmc::Channel<CriticalSectionRawMutex, TaskReturn, 16> = mpmc::Channel::new())
+            .unwrap();
+    let tm_queue =
+        singleton!(: mpmc::Channel<CriticalSectionRawMutex, Task, 16> = mpmc::Channel::new())
+            .unwrap();
+
     let (tm_send, prog_recv) = (prog_queue.sender(), prog_queue.receiver());
     let (prog_send, tm_recv) = (tm_queue.sender(), tm_queue.receiver());
+
+    let debounce_queue = singleton!(: mpmc::Channel<CriticalSectionRawMutex, (u8, u8, DebounceCallback), 16> = mpmc::Channel::new()).unwrap();
+    let (debounce_send, debounce_recv) = (debounce_queue.sender(), debounce_queue.receiver());
+
+    debug!("Init debouncer");
+    with(|cs| {
+        DEBOUNCE_SENDER
+            .borrow(cs)
+            .borrow_mut()
+            .replace(debounce_send);
+    });
+
     let task_iface = EmbeddedTaskInterface::new(prog_recv, prog_send);
+
+    let pins = (
+        pins.gpio10.into_mode::<hal::gpio::FunctionSpi>(),
+        pins.gpio12.into_mode::<hal::gpio::FunctionSpi>(),
+        pins.gpio11.into_mode::<hal::gpio::FunctionSpi>(),
+        pins.gpio9.into_push_pull_output(),
+        pins.gpio8.into_push_pull_output(),
+        // gates
+        pins.gpio4.into_push_pull_output(),
+        pins.gpio5.into_push_pull_output(),
+    );
+
+    // timer interrupts get enabled first, since we need them to run the whole
+    // future/waiting mechanism
+    alarms::init_interrupts(timer);
+    unsafe {
+        NVIC::unmask(Interrupt::TIMER_IRQ_0);
+        NVIC::unmask(Interrupt::TIMER_IRQ_1);
+        NVIC::unmask(Interrupt::TIMER_IRQ_2);
+        NVIC::unmask(Interrupt::TIMER_IRQ_3);
+    }
+
+    let output = GateCVProxy::new();
+
+    debug!("Starting core 1");
 
     static mut CORE1_STACK: Stack<10240> = Stack::new();
     let _core1 = core1.spawn(unsafe { &mut CORE1_STACK.mem }, move || {
+        info!(
+            "Core {} reporting",
+            unsafe { (*pac::SIO::ptr()).cpuid.read().bits() } as u8
+        );
+
         let spi_bus = BusManagerSimple::new(Spi::<_, _, 8>::new(pac.SPI1).init(
             &mut pac.RESETS,
             PERIPHERAL_FREQ.Hz(),
@@ -327,35 +374,25 @@ fn main() -> ! {
             &MODE_0,
         ));
 
-        let pins = (
-            pins.gpio10.into_mode::<hal::gpio::FunctionSpi>(),
-            pins.gpio12.into_mode::<hal::gpio::FunctionSpi>(),
-            pins.gpio11.into_mode::<hal::gpio::FunctionSpi>(),
-            pins.gpio9.into_push_pull_output(),
-            pins.gpio8.into_push_pull_output(),
-            // gates
-            pins.gpio4.into_push_pull_output(),
-            pins.gpio5.into_push_pull_output(),
-        );
-
-        info!("Core 1 reporting");
-
-        let fut = task_manager(
-            tm_recv,
-            tm_send,
-            spi_bus,
-            pins,
-        );
-
-        run_executor(1, fut);
+        run_executor(
+            1,
+            core1::core1_task(
+                &CORE1_READY_SIGNAL,
+                tm_recv,
+                tm_send,
+                debounce_recv,
+                spi_bus,
+                pins,
+            ),
+        )
     });
 
-    init_interrupts(&mut timer);
+    // wait for core 1 to be ready
+    info!("Waiting for Core 1 to be ready...");
+    while !CORE1_READY_SIGNAL.signaled() {}
+    info!("Core 1 seems ok!");
 
-    with(|cs| {
-        let mut timer_singleton = TIMER.borrow(cs).borrow_mut();
-        timer_singleton.replace(timer);
-    });
+    init_interrupts();
 
     // enable IRQs
     unsafe {
@@ -363,10 +400,8 @@ fn main() -> ! {
         NVIC::unmask(Interrupt::SPI0_IRQ);
         NVIC::unmask(Interrupt::UART0_IRQ);
         NVIC::unmask(Interrupt::DMA_IRQ_0);
-        NVIC::unmask(Interrupt::TIMER_IRQ_0);
     }
-
-    let output = GateCVProxy::new();
+    debug!("Interrupts enabled");
 
     run_executor(
         0,
@@ -374,9 +409,8 @@ fn main() -> ! {
     )
 }
 
-fn init_interrupts(timer: &mut Timer) {
+fn init_interrupts() {
     let mut pac = unsafe { Peripherals::steal() };
-    alarms::init_interrupts(&mut pac, timer);
     encoder::init_interrupts(&mut pac);
     screen::init_interrupts(&mut pac);
     switches::init_interrupts(&mut pac);
@@ -396,7 +430,31 @@ fn IO_IRQ_BANK0() {
 fn TIMER_IRQ_0() {
     with(|cs| {
         let mut pac = unsafe { Peripherals::steal() };
-        alarms::handle_irq(cs, &mut pac);
+        alarms::handle_irq(0, cs, &mut pac);
+    });
+}
+
+#[interrupt]
+fn TIMER_IRQ_1() {
+    with(|cs| {
+        let mut pac = unsafe { Peripherals::steal() };
+        alarms::handle_irq(1, cs, &mut pac);
+    });
+}
+
+#[interrupt]
+fn TIMER_IRQ_2() {
+    with(|cs| {
+        let mut pac = unsafe { Peripherals::steal() };
+        alarms::handle_irq(2, cs, &mut pac);
+    });
+}
+
+#[interrupt]
+fn TIMER_IRQ_3() {
+    with(|cs| {
+        let mut pac = unsafe { Peripherals::steal() };
+        alarms::handle_irq(3, cs, &mut pac);
     });
 }
 

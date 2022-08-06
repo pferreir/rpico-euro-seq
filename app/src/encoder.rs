@@ -1,7 +1,7 @@
 use core::{cell::RefCell, marker::PhantomData, ops::DerefMut};
 
 use critical_section::{Mutex, with, CriticalSection};
-use defmt::trace;
+use defmt::{trace, debug};
 use heapless::spsc::Queue;
 use rotary_encoder_embedded::{Direction, RotaryEncoder};
 use rp2040_hal::{
@@ -17,7 +17,7 @@ use rp2040_hal::{
     pac::Peripherals,
 };
 
-use crate::debounce::debounce;
+use crate::{debounce::{debounce, DebounceCallback, call_debouncer}, DEBOUNCE_SENDER};
 use logic::{ui::UIInputEvent, util::QueuePoppingIter};
 
 const DEBOUNCE_INTERVAL: u32 = 10000;
@@ -95,6 +95,7 @@ pub fn init_encoder(
     clk: Pin<Gpio22, FloatingInput>,
     switch: Pin<Gpio0, FloatingInput>,
 ) {
+    debug!("Init encoders");
     with(|cs| {
         ROTARY_ENCODER
             .borrow(cs)
@@ -134,18 +135,15 @@ pub fn init_interrupts(pac: &mut Peripherals) {
 pub fn handle_irq(cs: CriticalSection, pac: &mut Peripherals) {
     let reg_s = pac.IO_BANK0.proc0_ints[0].read();
 
-    trace!("--- GPIO_IRQ ---");
-
     if reg_s.gpio0_edge_high().bit() {
-        pac.IO_BANK0.intr[0].write(|w| w.gpio0_edge_high().set_bit());
-        debounce(cs, pac, 0, 0, DEBOUNCE_INTERVAL, |cs, pac| {
+        call_debouncer(pac, 0, 0, DebounceCallback(|cs, pac| {
             handle_switch_interrupt(cs, (pac.SIO.gpio_in.read().bits() & 1) == 0);
-        });
+        }));
     } else if reg_s.gpio0_edge_low().bit() {
         pac.IO_BANK0.intr[0].write(|w| w.gpio0_edge_low().set_bit());
-        debounce(cs, pac, 0, 0, DEBOUNCE_INTERVAL, |cs, pac| {
+        call_debouncer(pac, 0, 0, DebounceCallback(|cs, pac| {
             handle_switch_interrupt(cs, (pac.SIO.gpio_in.read().bits() & 1) == 0);
-        });
+        }));
     }
 
     let reg_s = pac.IO_BANK0.proc0_ints[2].read();

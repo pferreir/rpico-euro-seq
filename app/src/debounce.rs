@@ -1,72 +1,63 @@
-use core::cell::RefCell;
+use core::{cell::RefCell, fmt::Debug};
 
-use critical_section::{Mutex, CriticalSection};
+use critical_section::{Mutex, CriticalSection, with};
+use embassy_executor::time::{Timer, Duration};
 use defmt::{error, trace};
 use rp2040_hal::pac::Peripherals;
 
-use crate::alarms::{fire_alarm, AlarmArgs};
+use crate::DEBOUNCE_SENDER;
 
-static DEBOUNCE_CALLBACKS: Mutex<RefCell<[Option<fn(CriticalSection, &mut Peripherals)>; 4]>> =
-    Mutex::new(RefCell::new([None; 4]));
+pub struct DebounceCallback(pub fn(CriticalSection, &mut Peripherals));
 
-pub fn debounce_callback(
-    cs: CriticalSection,
-    pac: &mut Peripherals,
-    args: AlarmArgs,
-    alarm_id: u8,
-) {
-    if let AlarmArgs::U8U8(num_slice, num_pin) = args {
-        // clear any pending ISRs
-        pac.IO_BANK0.intr[num_slice as usize].modify(|r, w| {
-            let v = r.bits();
-            let bit_pos = num_pin * 4 + 2;
-            unsafe { w.bits(v | (0x3u32 << bit_pos)) }
-        });
-
-        // enable back relevant interrupts
-        pac.IO_BANK0.proc0_inte[num_slice as usize].modify(|r, w| {
-            let v = r.bits();
-            let bit_pos = num_pin * 4 + 2;
-            trace!("CB {:b} -> {:b}", v, v | (0x3u32 << bit_pos));
-            unsafe { w.bits(v | (0x3u32 << bit_pos)) }
-        });
-
-        // callback
-        let mut actions = DEBOUNCE_CALLBACKS.borrow(cs).borrow_mut();
-        let cb = actions[alarm_id as usize].take();
-        if let Some(f) = cb {
-            f(cs, pac);
-        } else {
-            error!("Callback should have been registered!");
-        }
-    } else {
-        panic!("Unexpected callback args")
+impl Debug for DebounceCallback {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("DebounceCallback")
     }
 }
 
-pub fn debounce(
-    cs: CriticalSection,
-    pac: &mut Peripherals,
+pub fn call_debouncer(pac: &mut Peripherals, num_slice: u8, num_pin: u8, callback: DebounceCallback) {
+    trace!("Disabling interrupt for {}:{}", num_slice, num_pin);
+
+    with(|cs| {
+        // disable interrupt
+        pac.IO_BANK0.proc0_inte[num_slice as usize].modify(|r, w| {
+            let v = r.bits();
+            let bit_pos = num_pin * 4 + 2;
+            trace!("DB {:b} -> {:b}", v, v & !(0x3u32 << bit_pos));
+            unsafe { w.bits(v & !(0x3u32 << bit_pos)) }
+        });
+
+        let mut rm = DEBOUNCE_SENDER.borrow(cs).borrow_mut();
+        let sender = rm.as_mut().unwrap();
+        sender.try_send((num_slice, num_pin, callback)).unwrap();
+    })
+}
+
+pub async fn debounce<'t>(
     num_slice: u8,
     num_pin: u8,
-    time: u32,
-    callback: fn(CriticalSection, &mut Peripherals),
+    callback: DebounceCallback,
 ) {
-    // disable interrupt
+    let mut pac = unsafe { Peripherals::steal() };
+
+    // clear pending ISRs
+    pac.IO_BANK0.intr[num_slice as usize].modify(|r, w| {
+        let v = r.bits();
+        let bit_pos = num_pin * 4 + 2;
+        unsafe { w.bits(v | (0x3u32 << bit_pos)) }
+    });
+
+    Timer::after(Duration::from_millis(10)).await;
+
+    // enable back relevant interrupts
     pac.IO_BANK0.proc0_inte[num_slice as usize].modify(|r, w| {
         let v = r.bits();
         let bit_pos = num_pin * 4 + 2;
-        trace!("DB {:b} -> {:b}", v, v & !(0x3u32 << bit_pos));
-        unsafe { w.bits(v & !(0x3u32 << bit_pos)) }
+        trace!("CB {:b} -> {:b}", v, v | (0x3u32 << bit_pos));
+        unsafe { w.bits(v | (0x3u32 << bit_pos)) }
     });
 
-    let alarm_id = fire_alarm(
-        cs,
-        time,
-        debounce_callback,
-        AlarmArgs::U8U8(num_slice, num_pin),
-    );
-
-    let mut actions = DEBOUNCE_CALLBACKS.borrow(cs).borrow_mut();
-    actions[alarm_id as usize].replace(callback);
+    with(|cs| {
+        callback.0(cs, &mut pac);
+    })
 }

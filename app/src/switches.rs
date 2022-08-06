@@ -1,6 +1,7 @@
 use core::{cell::RefCell, ops::DerefMut};
 
 use critical_section::{with, CriticalSection, Mutex};
+use defmt::debug;
 use embedded_hal::digital::v2::InputPin;
 use heapless::spsc::Queue;
 use rp2040_hal::{
@@ -11,10 +12,8 @@ use rp2040_hal::{
     pac::Peripherals,
 };
 
-use crate::debounce::debounce;
+use crate::{debounce::{DebounceCallback, call_debouncer}};
 use logic::{ui::UIInputEvent, util::QueuePoppingIter};
-
-const DEBOUNCE_INTERVAL: u32 = 10000;
 
 pub static SWITCHES: Mutex<RefCell<Option<Switches<Gpio2, Gpio3>>>> =
     Mutex::new(RefCell::new(None));
@@ -69,6 +68,7 @@ fn handle_switch_interrupt(cs: CriticalSection, pac: &mut Peripherals) {
 }
 
 pub fn init_switches(sw1: Pin<Gpio2, PullUpInput>, sw2: Pin<Gpio3, PullUpInput>) {
+    debug!("Init switches");
     with(|cs| {
         SWITCHES.borrow(cs).replace(Some(Switches::new(sw1, sw2)));
     });
@@ -90,16 +90,16 @@ pub fn handle_irq(cs: CriticalSection, pac: &mut Peripherals) {
     let reg_r = pac.IO_BANK0.intr[0].read();
 
     if reg_r.gpio2_edge_high().bit() {
-        debounce(cs, pac, 0, 2, DEBOUNCE_INTERVAL, handle_switch_interrupt);
+        call_debouncer(pac, 0, 2, DebounceCallback(handle_switch_interrupt));
     }
     if reg_r.gpio2_edge_low().bit() {
-        debounce(cs, pac, 0, 2, DEBOUNCE_INTERVAL, handle_switch_interrupt);
+        call_debouncer(pac, 0, 2, DebounceCallback(handle_switch_interrupt));
     }
 
     if reg_r.gpio3_edge_high().bit() {
-        debounce(cs, pac, 0, 3, DEBOUNCE_INTERVAL, handle_switch_interrupt);
+        call_debouncer(pac, 0, 3, DebounceCallback(handle_switch_interrupt));
     }
     if reg_r.gpio3_edge_low().bit() {
-        debounce(cs, pac, 0, 3, DEBOUNCE_INTERVAL, handle_switch_interrupt);
+        call_debouncer(pac, 0, 3, DebounceCallback(handle_switch_interrupt));
     }
 }

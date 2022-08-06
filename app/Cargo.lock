@@ -556,6 +556,7 @@ checksum = "bc4010833aea396656c2f91ee704d51a6f1329ec2ab56ffd00bfd56f7481ea94"
 name = "midi-embedded"
 version = "0.1.0"
 dependencies = [
+ "atomic-polyfill",
  "cortex-m",
  "cortex-m-rt",
  "critical-section 1.0.0-alpha.2",
