@@ -3,12 +3,12 @@ use core::task::Poll;
 
 use alloc::{borrow::ToOwned, format, string::String};
 use critical_section::with;
-use defmt::trace;
+use defmt::{trace, debug};
+use embassy_util::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_util::waitqueue::AtomicWaker;
 use embedded_hal::blocking::spi::{Transfer, Write};
 use embedded_sdmmc::sdmmc::{Error as ESCMMCSPIError, SdMmcSpi};
 use futures::{future::join, Sink, Stream};
-use heapless::spsc;
 use logic::stdlib::{
     FileSystem, StdlibError, Task, TaskId, TaskInterface, TaskManager, TaskReturn, TaskType,
 };
@@ -18,7 +18,7 @@ use rp2040_hal::gpio::{
 };
 use shared_bus::BusManagerSimple;
 
-use crate::alarms::fire_alarm;
+use crate::mpmc::{self, TryRecvError, Receiver};
 use crate::{
     gate_cv::{self, GateCVOutWithPins},
     DummyTime,
@@ -51,84 +51,23 @@ fn format_spi_error<'t>(e: &ESCMMCSPIError) -> String {
     }
 }
 
-pub struct TaskChannelConsumer(pub spsc::Consumer<'static, Task, 128>);
-pub struct TaskChannelProducer(pub spsc::Producer<'static, TaskReturn, 128>);
-
-impl Stream for TaskChannelConsumer {
-    type Item = Task;
-
-    fn poll_next(
-        mut self: core::pin::Pin<&mut Self>,
-        cx: &mut core::task::Context<'_>,
-    ) -> core::task::Poll<Option<Self::Item>> {
-        match self.0.dequeue() {
-            Some(t) => Poll::Ready(Some(t)),
-            None => {
-                TASK_WAKER.register(cx.waker());
-                Poll::Pending
-            },
-        }
-    }
-}
-
-pub enum TaskChannelError {
-    QueueFull,
-}
-
-impl Sink<TaskReturn> for TaskChannelProducer {
-    type Error = TaskChannelError;
-
-    fn poll_ready(
-        self: core::pin::Pin<&mut Self>,
-        _cx: &mut core::task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        if self.0.ready() {
-            Poll::Ready(Ok(()))
-        } else {
-            // TODO: handle this?
-            Poll::Pending
-        }
-    }
-
-    fn start_send(
-        mut self: core::pin::Pin<&mut Self>,
-        item: TaskReturn,
-    ) -> Result<(), Self::Error> {
-        self.0
-            .enqueue(item)
-            .map_err(|_| TaskChannelError::QueueFull)
-    }
-
-    fn poll_flush(
-        self: core::pin::Pin<&mut Self>,
-        _cx: &mut core::task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn poll_close(
-        self: core::pin::Pin<&mut Self>,
-        _cx: &mut core::task::Context<'_>,
-    ) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-}
 
 pub struct EmbeddedTaskInterface<'t> {
-    consumer: spsc::Consumer<'t, TaskReturn, 128>,
-    producer: spsc::Producer<'t, Task, 128>,
+    consumer: mpmc::Receiver<'t, CriticalSectionRawMutex, TaskReturn, 16>,
+    producer: mpmc::Sender<'t, CriticalSectionRawMutex, Task, 16>,
     id_count: u32,
 }
 
 #[derive(Debug)]
 pub enum TaskInterfaceError {
     QueueFull,
+    TryRecvError(TryRecvError)
 }
 
 impl<'t> EmbeddedTaskInterface<'t> {
     pub fn new(
-        consumer: spsc::Consumer<'t, TaskReturn, 128>,
-        producer: spsc::Producer<'t, Task, 128>,
+        consumer: mpmc::Receiver<'t, CriticalSectionRawMutex, TaskReturn, 16>,
+        producer: mpmc::Sender<'t, CriticalSectionRawMutex, Task, 16>,
     ) -> Self {
         Self {
             consumer,
@@ -143,9 +82,10 @@ impl<'t> TaskInterface for EmbeddedTaskInterface<'t> {
 
     fn submit(&mut self, task_type: TaskType) -> Result<TaskId, Self::Error> {
         let id = self.id_count;
+        debug!("Submit {:?}", id);
         self.id_count += 1;
         let res = self.producer
-            .enqueue(Task(id, task_type))
+            .try_send(Task(id, task_type))
             .map_err(|_| TaskInterfaceError::QueueFull)
             .map(|_| id);
         TASK_WAKER.wake();
@@ -153,7 +93,7 @@ impl<'t> TaskInterface for EmbeddedTaskInterface<'t> {
     }
 
     fn pop(&mut self) -> Result<Option<TaskReturn>, Self::Error> {
-        Ok(self.consumer.dequeue())
+        Ok(Some(self.consumer.try_recv().map_err(TaskInterfaceError::TryRecvError)?))
     }
 }
 
@@ -183,8 +123,8 @@ impl Display for TaskManagerTaskError {
 }
 
 pub async fn task_manager<'t, SPI: Transfer<u8> + Write<u8> + 't>(
-    mut rx: TaskChannelConsumer,
-    mut tx: TaskChannelProducer,
+    mut rx: mpmc::Receiver<'t, CriticalSectionRawMutex, Task, 16>,
+    mut tx: mpmc::Sender<'t, CriticalSectionRawMutex, TaskReturn, 16>,
     spi_bus: BusManagerSimple<SPI>,
     (clk, _miso, mosi, cs_out, cs_mmc, gate1, gate2): (
         Pin<Gpio10, FunctionSpi>,
@@ -207,6 +147,8 @@ where
         .await
         .map_err(TaskManagerTaskError::Stdlib)?;
     let mut task_manager = TaskManager::new(fs);
+
+    debug!("Running tasks...");
 
     let output = gate_cv::GateCVOut::new(
         // DAC

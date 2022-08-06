@@ -13,17 +13,18 @@ mod encoder;
 mod gate_cv;
 mod midi_in;
 mod screen;
+mod mpmc;
 mod switches;
 mod task_queues;
 
 use alloc::{borrow::ToOwned, format, string::String};
 use allocator::CortexMHeap;
 use critical_section::{Mutex, with};
+use embassy_util::blocking_mutex::raw::CriticalSectionRawMutex;
 use core::{alloc::Layout, fmt::Debug};
 use embassy_executor::executor::{raw::TaskPool, Executor};
 use futures::Future;
 use gate_cv::GateCVProxy;
-use heapless::spsc;
 
 use defmt::panic;
 use embedded_sdmmc::{sdmmc::BlockSpi, TimeSource, Timestamp};
@@ -60,14 +61,13 @@ use hal::{
     Spi, Timer,
 };
 
-use embedded_sdmmc::sdmmc::Error as ESCMMCSPIError;
 use logic::{
     programs::{self, Program, ProgramError},
     stdlib::{StdlibError, Task, TaskReturn},
     LogLevel,
 };
 use screen::{Framebuffer, ScreenDriverWithPins};
-use task_queues::{EmbeddedTaskInterface, TaskChannelConsumer, TaskChannelProducer};
+use task_queues::EmbeddedTaskInterface;
 
 use crate::task_queues::task_manager;
 
@@ -319,10 +319,10 @@ fn main() -> ! {
         timer_singleton.replace(timer);
     });
 
-    let prog_queue = singleton!(: spsc::Queue<TaskReturn, 128> = spsc::Queue::new()).unwrap();
-    let tm_queue = singleton!(: spsc::Queue<Task, 128> = spsc::Queue::new()).unwrap();
-    let (tm_send, prog_recv) = prog_queue.split();
-    let (prog_send, tm_recv) = tm_queue.split();
+    let prog_queue = singleton!(: mpmc::Channel<CriticalSectionRawMutex, TaskReturn, 16> = mpmc::Channel::new()).unwrap();
+    let tm_queue = singleton!(: mpmc::Channel<CriticalSectionRawMutex, Task, 16> = mpmc::Channel::new()).unwrap();
+    let (tm_send, prog_recv) = (prog_queue.sender(), prog_queue.receiver());
+    let (prog_send, tm_recv) = (tm_queue.sender(), tm_queue.receiver());
     let task_iface = EmbeddedTaskInterface::new(prog_recv, prog_send);
 
     static mut CORE1_STACK: Stack<10240> = Stack::new();
@@ -348,8 +348,8 @@ fn main() -> ! {
         info!("Core 1 reporting");
 
         let fut = task_manager(
-            TaskChannelConsumer(tm_recv),
-            TaskChannelProducer(tm_send),
+            tm_recv,
+            tm_send,
             spi_bus,
             pins,
         );

@@ -283,7 +283,7 @@ version = "0.1.0"
 dependencies = [
  "atomic-polyfill",
  "cfg-if",
- "critical-section 0.2.7",
+ "critical-section 1.0.0-alpha.2",
  "futures-util",
  "heapless",
 ]
