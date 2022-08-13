@@ -1,11 +1,9 @@
 use core::marker::PhantomData;
-use alloc::boxed::Box;
-use embedded_sdmmc::{BlockDevice, TimeSource};
-use heapless::{spsc::Queue, String, Vec};
+use heapless::{String, Vec};
 use ufmt::uwrite;
 use voice_lib::{NoteFlag, NotePair, VoiceTrack};
 
-use crate::{log, util::DiscreetUnwrap, stdlib::{StdlibError, FileSystem, SignalId, TaskManager, Task, TaskType}};
+use crate::{log, util::DiscreetUnwrap, stdlib::{StdlibError, TaskType}};
 
 use super::data::SequenceFile;
 
@@ -45,7 +43,7 @@ impl<'t> MonoRecorderBox<'t> {
         log::debug(&text);
     }
 
-    pub(crate) fn key_released(&mut self, beat: usize, n: NotePair) {
+    pub(crate) fn key_released(&mut self, _beat: usize, n: NotePair) {
         self.current_note = self
             .current_note
             .iter()

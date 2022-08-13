@@ -1,4 +1,4 @@
-use core::{fmt::Debug, future::Future, ops::DerefMut};
+use core::{fmt::Debug, ops::DerefMut};
 use embedded_graphics::{
     draw_target::DrawTarget,
     mono_font::{ascii::FONT_10X20, MonoTextStyle},
@@ -12,10 +12,7 @@ use embedded_sdmmc::{BlockDevice, TimeSource};
 use heapless::{spsc::Queue, String};
 use ufmt::uwrite;
 
-use crate::{
-    stdlib::{FileSystem, Task, TaskInterface, TaskManager, TaskResult},
-    ui::UIInputEvent,
-};
+use crate::stdlib::{TaskInterface, ui::UIInputEvent};
 
 use super::{Program, ProgramError};
 

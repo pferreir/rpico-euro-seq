@@ -1,12 +1,9 @@
-use core::{any::Any, marker::PhantomData};
-
-use crate::{ui::UIInputEvent, log::info};
 use alloc::{boxed::Box, vec::Vec};
 use embedded_graphics::{
-    draw_target::DrawTarget, pixelcolor::Rgb565, prelude::WebColors, Drawable,
+    draw_target::DrawTarget, pixelcolor::Rgb565
 };
 
-use super::{button::ButtonId, Button, DynDrawable, Input, OverlayResult};
+use super::{button::ButtonId, DynDrawable, UIInputEvent};
 
 trait Settings: Default {}
 trait Config: Default {}

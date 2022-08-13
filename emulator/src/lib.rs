@@ -7,7 +7,6 @@ use core::future::Future;
 use core::str;
 use std::cell::RefCell;
 use std::fmt::Debug;
-use std::marker::PhantomData;
 use std::rc::Rc;
 
 use embedded_graphics_web_simulator::{
@@ -18,11 +17,12 @@ use embedded_sdmmc::{Block, BlockCount, BlockDevice, BlockIdx, Timestamp};
 use futures::channel::mpsc::{self, Receiver, Sender};
 use js_sys::{Date, Uint8Array};
 use logic::log::info;
+use logic::stdlib::ui::UIInputEvent;
 use logic::stdlib::{
     CVChannel, CVChannelId, Channel, FileSystem, GateChannel, GateChannelId, Output, Task, TaskId,
-    TaskInterface, TaskManager, TaskResult, TaskReturn, TaskType,
+    TaskInterface, TaskManager, TaskReturn, TaskType,
 };
-use midi_types::{MidiMessage, Note};
+use midi_types::MidiMessage;
 use serde::{Deserialize, Serialize};
 use ufmt::{uDebug, uWrite};
 use wasm_bindgen::{prelude::*, JsCast};
@@ -38,7 +38,6 @@ use logic::LogLevel;
 use logic::{
     programs::{Program, SequencerProgram},
     screen::{SCREEN_HEIGHT, SCREEN_WIDTH},
-    ui::UIInputEvent,
 };
 use voice_lib::{InvalidNotePair, NotePair};
 
@@ -150,7 +149,7 @@ struct BrowserOutput {
     cv0: BrowserCVChannel,
 }
 
-impl<'t> Output<Frequency, InvalidNotePair> for BrowserOutput {
+impl Output<Frequency, InvalidNotePair> for BrowserOutput {
     fn set_gate(&mut self, id: GateChannelId, value: bool) {
         match id {
             GateChannelId::Gate0 => {
@@ -229,7 +228,7 @@ impl BlockDevice for LocalStorageDevice {
         &'a mut self,
         blocks: &'a mut [Block],
         BlockIdx(start_block_idx): BlockIdx,
-        reason: &str,
+        _reason: &str,
     ) -> Self::ReadFuture<'a> {
         let start = start_block_idx * 512;
         let end = start_block_idx * 512 + blocks.len() as u32 * 512;
@@ -263,7 +262,7 @@ impl BlockDevice for LocalStorageDevice {
         }
     }
 
-    fn num_blocks<'a>(&'a self) -> Self::BlocksFuture<'a> {
+    fn num_blocks(&self) -> Self::BlocksFuture<'_> {
         async move { Ok(BlockCount(LOCAL_STORAGE_SIZE as u32 / 512)) }
     }
 }

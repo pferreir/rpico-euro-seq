@@ -1,10 +1,9 @@
-use alloc::boxed::Box;
-use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::WebColors};
+use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565};
 use embedded_sdmmc::{BlockDevice, TimeSource};
 
-use crate::{programs::Program, ui::UIInputEvent, stdlib::TaskInterface};
+use crate::{programs::Program, stdlib::TaskInterface};
 
-use super::{Overlay, OverlayResult};
+use super::Overlay;
 
 pub trait Dialog<
     't,

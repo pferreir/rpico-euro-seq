@@ -1,6 +1,6 @@
 use core::fmt::Debug;
 
-use alloc::{boxed::Box, collections::BTreeMap, format};
+use alloc::{boxed::Box, format};
 use embedded_sdmmc::{BlockDevice, TimeSource};
 use heapless::String;
 
@@ -9,12 +9,13 @@ use crate::{
 };
 use futures::{StreamExt, Stream, Sink, SinkExt};
 
-use super::{DataFile, File, FileSystem};
+use super::{DataFile, File, FileSystem, FileType};
 
 pub struct SignalId(pub u64);
 
 pub enum TaskType {
-    FileSave(String<12>, Box<[u8]>),
+    FileSave(FileType, String<12>, Box<[u8]>),
+    FileLoad(FileType, String<12>)
 }
 
 pub struct Task(pub u32, pub TaskType);
@@ -45,7 +46,7 @@ impl<'t, B: BlockDevice + 't, TS: TimeSource + 't> TaskManager<B, TS> {
             if let Some(task) = rx_channel.next().await {
                 debug(&format!("Running task {}", task.0));
                 tx_channel.send((task.0, match task.1 {
-                    TaskType::FileSave(file_name, data) => {
+                    TaskType::FileSave(file_type, file_name, data) => {
                         info("Saving file...");
                         let f = DataFile::new(&file_name);
                         let tr = match f.open_write(&mut self.fs, false).await {
@@ -70,6 +71,7 @@ impl<'t, B: BlockDevice + 't, TS: TimeSource + 't> TaskManager<B, TS> {
                         };
                         tr
                     }
+                    TaskType::FileLoad(_, _) => todo!(),
                 })).await.duwrp();
             }
         }

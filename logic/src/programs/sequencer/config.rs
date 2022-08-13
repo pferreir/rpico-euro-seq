@@ -1,7 +1,7 @@
 use crate::{stdlib::{
     Closed, ConfigFile, DataFile, File, FileSystem, OpenWrite, StdlibError, StdlibErrorFileWrapper, FSError,
 }, log};
-use embedded_sdmmc::{BlockDevice, Error as ESDMMCError, TimeSource};
+use embedded_sdmmc::{BlockDevice, TimeSource};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]

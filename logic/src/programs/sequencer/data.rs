@@ -5,7 +5,7 @@ use serde::{Serialize, Deserialize};
 use ufmt::uwrite;
 use ciborium::ser::into_writer;
 
-use crate::{util::DiscreetUnwrap, stdlib::{StdlibErrorFileWrapper, Closed, TaskType}, log::{info, debug}};
+use crate::{util::DiscreetUnwrap, stdlib::{StdlibErrorFileWrapper, Closed, TaskType, FileType}, log::debug};
 use crate::stdlib::{FileSystem, StdlibError, DataFile, File};
 
 const FILE_BUFFER_SIZE: usize = 10240;
@@ -60,7 +60,7 @@ impl SequenceFile {
         let mut file_name = String::<12>::new();
         uwrite!(file_name, "{}.seq", &self.seq_name as &str).duwrp();
 
-        Ok(TaskType::FileSave(file_name, Box::new(buffer)))
+        Ok(TaskType::FileSave(FileType::Data, file_name, Box::new(buffer)))
     }
 
 }

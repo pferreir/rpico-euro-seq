@@ -1,5 +1,6 @@
 pub(crate) mod actions;
 pub(crate) mod overlays;
+pub(crate) mod icons;
 mod roll;
 mod score;
 

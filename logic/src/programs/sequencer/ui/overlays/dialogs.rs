@@ -1,4 +1,4 @@
-use alloc::{boxed::Box, string::ToString, format};
+use alloc::{boxed::Box};
 use core::{any::Any, fmt::Debug};
 use embedded_graphics::{
     draw_target::DrawTarget,
@@ -18,14 +18,11 @@ use crate::{
     stdlib::{
         ui::{
             select::{Message, SelectGroup},
-            Button, ButtonId, Dialog, DynDrawable, Input, Overlay, OverlayResult,
-        },
-        SignalId, StdlibError, TaskManager, Task, TaskInterface,
+            Button, ButtonId, DynDrawable, Input, Overlay, OverlayResult, UIInputEvent,
+        }, StdlibError, TaskInterface,
     },
-    ui::UIInputEvent, log::info, util::DiscreetUnwrap,
+    util::DiscreetUnwrap,
 };
-
-enum FileLoadAction {}
 
 pub(crate) struct FileLoadDialog<T: DrawTarget<Color = Rgb565>> {
     sg: SelectGroup<T>,
@@ -50,14 +47,14 @@ impl<
         TI: TaskInterface + 't
     > Overlay<'t, D, P, B, TS, TI> for FileLoadDialog<D>
 {
-    fn process_ui_input(&mut self, input: &UIInputEvent) -> OverlayResult<'t, D, P, B, TS, TI>
+    fn process_ui_input(&mut self, _input: &UIInputEvent) -> OverlayResult<'t, D, P, B, TS, TI>
     where
         D: 't,
     {
         OverlayResult::Nop
     }
 
-    fn draw(&self, target: &mut D) -> Result<(), <D as DrawTarget>::Error> {
+    fn draw(&self, _target: &mut D) -> Result<(), <D as DrawTarget>::Error> {
         todo!()
     }
 

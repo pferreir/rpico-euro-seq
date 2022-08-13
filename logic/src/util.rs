@@ -1,8 +1,8 @@
-use core::{fmt, ops::IndexMut};
+use core::fmt;
 use core::str;
 use embedded_midi::Note as MidiNote;
 use heapless::spsc::Queue;
-use voice_lib::{NotePair, InvalidNotePair};
+use voice_lib::NotePair;
 
 
 pub struct QueuePoppingIter<'t, T, const N: usize> {

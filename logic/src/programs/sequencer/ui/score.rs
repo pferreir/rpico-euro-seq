@@ -10,11 +10,9 @@ use embedded_graphics::{
     primitives::{Line, PrimitiveStyleBuilder, Rectangle},
 };
 use embedded_sdmmc::{BlockDevice, TimeSource};
-use heapless::String;
-use ufmt::uwrite;
 use voice_lib::{NoteFlag, NotePair};
 
-use crate::{log::info, programs::SequencerProgram, screen::SCREEN_WIDTH};
+use crate::{programs::SequencerProgram, screen::SCREEN_WIDTH};
 
 use super::{
     roll::{draw_piano_roll, ROLL_HEIGHT, ROLL_WIDTH},

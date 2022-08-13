@@ -1,5 +1,3 @@
-use core::marker::PhantomData;
-
 use embedded_graphics::{
     mono_font::MonoTextStyle,
     prelude::*,
@@ -10,9 +8,7 @@ use embedded_graphics::{
 use heapless::String;
 use profont::PROFONT_12_POINT;
 
-use crate::ui::UIInputEvent;
-
-use super::{select::{Selectable, Message}, DynDrawable};
+use super::{select::{Selectable, Message}, DynDrawable, UIInputEvent};
 
 pub struct Input {
     text: &'static str,

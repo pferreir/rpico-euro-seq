@@ -13,7 +13,7 @@ use rp2040_hal::{
 };
 
 use crate::{debounce::{DebounceCallback, call_debouncer}};
-use logic::{ui::UIInputEvent, util::QueuePoppingIter};
+use logic::{util::QueuePoppingIter, stdlib::ui::UIInputEvent};
 
 pub static SWITCHES: Mutex<RefCell<Option<Switches<Gpio2, Gpio3>>>> =
     Mutex::new(RefCell::new(None));

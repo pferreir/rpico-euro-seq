@@ -10,7 +10,6 @@ extern crate alloc;
 pub mod stdlib;
 
 pub mod programs;
-pub mod ui;
 pub mod util;
 pub mod screen;
 

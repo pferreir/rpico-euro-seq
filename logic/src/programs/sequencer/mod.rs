@@ -1,30 +1,27 @@
 use core::{
-    borrow::BorrowMut, fmt::Debug, future::Future, marker::PhantomData, ops::{DerefMut, Deref}, pin::Pin,
+    fmt::Debug, marker::PhantomData, ops::{DerefMut, Deref},
 };
 
 use alloc::{boxed::Box, format, vec::Vec};
-use embedded_graphics::{draw_target::Translated, pixelcolor::Rgb565, prelude::*};
-use embedded_midi::{MidiMessage, Note as MidiNote};
+use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
+use embedded_midi::{MidiMessage};
 use embedded_sdmmc::{BlockDevice, TimeSource};
 use heapless::{spsc::Queue, String};
-use tinybmp::Bmp;
 
 use self::{
-    config::Config,
     recorder::MonoRecorderBox,
     ui::{
-        actions::{icons::*, UIAction, NUM_UI_ACTIONS},
-        overlays::FileMenu,
-    },
+        actions::{UIAction, NUM_UI_ACTIONS},
+        overlays::FileMenu
+    }, config::Config,
 };
 use crate::{
     log::info,
     stdlib::{
-        ui::{Overlay, OverlayResult},
-        CVChannel, Channel, Closed, DataFile, File, FileSystem, GateChannel, SignalId, StdlibError,
-        Task, TaskInterface, TaskManager, TaskResult, TaskType, Output, GateChannelId, CVChannelId,
+        ui::{Overlay, OverlayResult, UIInputEvent},
+        StdlibError,
+        TaskInterface, TaskType, Output, GateChannelId, CVChannelId, FileType,
     },
-    ui::UIInputEvent,
     util::{midi_note_to_lib, DiscreetUnwrap, QueuePoppingIter},
 };
 use voice_lib::{Note, NoteFlag, NotePair};
@@ -35,6 +32,7 @@ mod config;
 mod data;
 mod recorder;
 mod ui;
+
 
 pub(crate) enum State {
     Stopped,
@@ -51,12 +49,6 @@ impl State {
             State::Playing(time, beat) | State::Recording(time, beat) => (*time, *beat),
         }
     }
-}
-
-#[derive(Copy, Clone, PartialEq, Eq)]
-enum VoiceConfig {
-    Mono(u8),
-    PolySteal,
 }
 
 pub struct OverlayManager<
@@ -136,7 +128,7 @@ where
                 OverlayResult::Close => {
                     overlays.pop();
                 }
-                OverlayResult::CloseOnSignal(signal_id) => {}
+                OverlayResult::CloseOnSignal(_) => {}
             }
         }
 
@@ -167,16 +159,6 @@ pub struct SequencerProgram<
     pub(crate) selected_action: UIAction,
     pub(crate) overlay_manager: Option<OverlayManager<'t, B, TS, D, TI>>,
 
-    // Icons
-    pub(crate) play_icon: Bmp<'t, Rgb565>,
-    pub(crate) pause_icon: Bmp<'t, Rgb565>,
-    pub(crate) record_icon: Bmp<'t, Rgb565>,
-    pub(crate) record_on_icon: Bmp<'t, Rgb565>,
-    pub(crate) stop_icon: Bmp<'t, Rgb565>,
-    pub(crate) stop_on_icon: Bmp<'t, Rgb565>,
-    pub(crate) beginning_icon: Bmp<'t, Rgb565>,
-    pub(crate) seek_icon: Bmp<'t, Rgb565>,
-
     _d: PhantomData<D>,
 }
 
@@ -194,6 +176,10 @@ where
         while let Ok(Some((id, result))) = task_iface.pop() {
             info(&format!("Task {} result: {:?}", id, result));
         }
+    }
+
+    fn _first_run(&mut self, task_iface: &mut TI) {
+        task_iface.submit(TaskType::FileLoad(FileType::Config, "sequencer".into()));
     }
 }
 
@@ -215,21 +201,12 @@ where
             bpm: 50,
             midi_queue: Queue::new(),
             recorder: MonoRecorderBox::new(),
-            state: State::Recording(0, 0),
+            state: State::Stopped,
 
             // UI
             selected_action: UIAction::PlayPause,
             overlay_manager: Some(OverlayManager::new()),
             // Icons
-            play_icon: Bmp::from_slice(PLAY_ICON).unwrap(),
-            pause_icon: Bmp::from_slice(PAUSE_ICON).unwrap(),
-            record_icon: Bmp::from_slice(RECORD_ICON).unwrap(),
-            record_on_icon: Bmp::from_slice(RECORD_ON_ICON).unwrap(),
-            stop_icon: Bmp::from_slice(STOP_ICON).unwrap(),
-            stop_on_icon: Bmp::from_slice(STOP_ON_ICON).unwrap(),
-            beginning_icon: Bmp::from_slice(BEGINNING_ICON).unwrap(),
-            seek_icon: Bmp::from_slice(SEEK_ICON).unwrap(),
-
             _d: PhantomData,
         }
     }
@@ -305,10 +282,6 @@ where
     }
 
     fn setup(&mut self) {
-        // Config::load(&mut self.fs)
-        //     .await
-        //     .map_err(ProgramError::Stdlib)?;
-
         // TODO: remove
         self.recorder
             .voice_state
@@ -345,7 +318,10 @@ where
 
         let time_diff = match self.prev_program_time {
             Some(t) => self.program_time - t,
-            None => 0u32,
+            None => {
+                self._first_run(task_iface);
+                0u32
+            },
         };
 
         match self.state {

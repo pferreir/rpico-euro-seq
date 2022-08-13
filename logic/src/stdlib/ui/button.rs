@@ -1,4 +1,4 @@
-use core::{cmp, marker::PhantomData, any::Any};
+use core::{cmp, any::Any};
 
 use alloc::boxed::Box;
 use embedded_graphics::{
@@ -9,13 +9,10 @@ use embedded_graphics::{
     text::{Text, TextStyleBuilder},
     Drawable, pixelcolor::Rgb565,
 };
-use heapless::String;
 use profont::PROFONT_12_POINT;
-use ufmt::uwrite;
 
-use crate::{ui::UIInputEvent, log::info};
 
-use super::{select::{Selectable, Message}, DynDrawable};
+use super::{select::{Selectable, Message}, DynDrawable, UIInputEvent};
 
 
 const MIN_BUTTON_WIDTH: u32 = 30;

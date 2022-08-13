@@ -2,7 +2,7 @@
 
 extern crate alloc;
 
-use serde::{Deserialize, Serialize, de::{Visitor, SeqAccess}};
+use serde::{Deserialize, Serialize};
 
 mod note;
 mod track;

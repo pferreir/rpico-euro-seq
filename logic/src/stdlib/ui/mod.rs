@@ -1,25 +1,35 @@
-pub(crate) mod select;
+#[macro_use]
+pub mod icons;
+pub mod select;
 
 mod button;
 mod dialog;
 mod input;
 mod menu;
 
-use core::{any::Any, future::Future, pin::Pin};
-
 use alloc::boxed::Box;
 pub use button::{Button, ButtonId};
 pub use dialog::Dialog;
 use embedded_graphics::{
-    draw_target::DrawTarget, pixelcolor::Rgb565, prelude::WebColors, Drawable,
+    draw_target::DrawTarget, pixelcolor::Rgb565
 };
 use embedded_sdmmc::{BlockDevice, TimeSource};
 pub use input::Input;
 pub use menu::{MenuDef, MenuOptions};
+use ufmt::derive::uDebug;
 
-use crate::{programs::Program, ui::UIInputEvent};
+use crate::{programs::Program};
 
-use super::{SignalId, StdlibError, Task, TaskInterface, TaskManager};
+use super::{SignalId, StdlibError, TaskInterface};
+
+
+#[derive(uDebug, Debug, Clone)]
+pub enum UIInputEvent {
+    EncoderTurn(i8),
+    EncoderSwitch(bool),
+    Switch1(bool),
+    Switch2(bool)
+}
 
 pub trait DynTarget {}
 

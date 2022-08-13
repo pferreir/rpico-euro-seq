@@ -78,7 +78,7 @@ async fn list_files<D: BlockDevice, TS: TimeSource, T: File<Closed>>(
             }
             idx += 1
         })
-        .await;
+        .await?;
     Ok(res)
 }
 
@@ -159,6 +159,12 @@ async fn open_file<D: BlockDevice, TS: TimeSource, F: File<Closed>>(
         .open_file_in_dir(volume, dir, &file.file_name(), mode)
         .await
         .map_err(|e| StdlibErrorFileWrapper(e.into(), file))
+}
+
+pub enum FileType {
+    Data,
+    Config,
+    Bin
 }
 
 macro_rules! file_dir {

@@ -11,16 +11,7 @@ use embedded_sdmmc::{BlockDevice, TimeSource};
 
 use crate::{programs::{sequencer::State, SequencerProgram}, util::DiscreetUnwrap, stdlib::TaskInterface};
 
-pub(crate) mod icons {
-    pub(crate) static PLAY_ICON: &[u8] = include_bytes!("../../../../assets/play.bmp");
-    pub(crate) static PAUSE_ICON: &[u8] = include_bytes!("../../../../assets/pause.bmp");
-    pub(crate) static RECORD_ICON: &[u8] = include_bytes!("../../../../assets/record.bmp");
-    pub(crate) static RECORD_ON_ICON: &[u8] = include_bytes!("../../../../assets/record_on.bmp");
-    pub(crate) static STOP_ICON: &[u8] = include_bytes!("../../../../assets/stop.bmp");
-    pub(crate) static STOP_ON_ICON: &[u8] = include_bytes!("../../../../assets/stop_on.bmp");
-    pub(crate) static BEGINNING_ICON: &[u8] = include_bytes!("../../../../assets/beginning.bmp");
-    pub(crate) static SEEK_ICON: &[u8] = include_bytes!("../../../../assets/seek.bmp");
-}
+use super::icons;
 
 pub(crate) const NUM_UI_ACTIONS: usize = 5;
 
@@ -68,9 +59,9 @@ impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>, TI: Task
     {
         Image::new(
             if let State::Playing(_, _) = self.state {
-                &self.pause_icon
+                icons::pause()
             } else {
-                &self.play_icon
+                icons::play()
             },
             pos + UIAction::PlayPause.button_pos(),
         )
@@ -78,9 +69,9 @@ impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>, TI: Task
         .duwrp();
         Image::new(
             if let State::Stopped = self.state {
-                &self.stop_on_icon
+                icons::stop_on()
             } else {
-                &self.stop_icon
+                icons::stop()
             },
             pos + UIAction::Stop.button_pos(),
         )
@@ -88,18 +79,18 @@ impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>, TI: Task
         .duwrp();
         Image::new(
             if let State::Recording(_, _) = self.state {
-                &self.record_on_icon
+                icons::record_on()
             } else {
-                &self.record_icon
+                icons::record()
             },
             pos + UIAction::Record.button_pos(),
         )
         .draw(screen)
         .duwrp();
-        Image::new(&self.beginning_icon, pos + UIAction::Beginning.button_pos())
+        Image::new(icons::beginning(), pos + UIAction::Beginning.button_pos())
             .draw(screen)
             .duwrp();
-        Image::new(&self.seek_icon, pos + UIAction::Seek.button_pos())
+        Image::new(icons::seek(), pos + UIAction::Seek.button_pos())
             .draw(screen)
             .duwrp();
 

@@ -1,8 +1,4 @@
-use core::{
-    fmt::Debug,
-    ops::{Index, IndexMut},
-    pin::Pin,
-};
+use core::fmt::Debug;
 
 use voice_lib::NotePair;
 
