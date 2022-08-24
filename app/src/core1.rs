@@ -1,9 +1,9 @@
 use core::fmt::{Debug, Display};
 
 use alloc::{borrow::ToOwned, format, string::String};
-use embassy_executor::time::{Timer, Duration};
-use embassy_util::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_util::channel::signal::Signal;
+use embassy_time::{Timer, Duration};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use embedded_hal::blocking::spi::{Transfer, Write};
 use embedded_sdmmc::sdmmc::{Error as ESCMMCSPIError, SdMmcSpi};
 use futures::StreamExt;

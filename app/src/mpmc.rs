@@ -26,8 +26,8 @@ use core::future::Future;
 use core::pin::Pin;
 use core::task::{Context, Poll};
 use defmt::{trace, debug};
-use embassy_util::blocking_mutex::{raw::RawMutex, Mutex};
-use embassy_util::waitqueue::WakerRegistration;
+use embassy_sync::blocking_mutex::{raw::RawMutex, Mutex};
+use embassy_sync::waitqueue::WakerRegistration;
 use futures::{Sink, Stream};
 
 use heapless::Deque;

@@ -2,17 +2,14 @@ use core::cell::{Cell, RefMut, RefCell};
 use atomic_polyfill::{AtomicU8, Ordering};
 use critical_section::{CriticalSection, with};
 use defmt::trace;
-use embassy_executor::time::{driver::{Driver, AlarmHandle}};
-use embassy_util::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex};
-
+use embassy_time::{driver::{Driver, AlarmHandle}, TICKS_PER_SECOND};
+use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex};
 use embedded_time::duration::Microseconds;
 use rp2040_hal::{
     pac::Peripherals,
     timer::{Alarm as AlarmTrait, Alarm0, Alarm1, Alarm2, Alarm3, ScheduleAlarmError},
     Timer,
 };
-
-pub use embassy_executor::time::TICKS_PER_SECOND;
 
 struct AlarmSlot {
     timestamp: Cell<u64>,
@@ -33,7 +30,7 @@ const DUMMY_ALARM: AlarmSlot = AlarmSlot {
     callback: Cell::new(None)
 };
 
-embassy_executor::time_driver_impl!(static DRIVER: TimerDriver = TimerDriver{
+embassy_time::time_driver_impl!(static DRIVER: TimerDriver = TimerDriver{
     alarm_slots:  Mutex::const_new(CriticalSectionRawMutex::new(), [DUMMY_ALARM; ALARM_COUNT]),
     alarms: Mutex::const_new(CriticalSectionRawMutex::new(), RefCell::new(None)),
     next_alarm: AtomicU8::new(0),
@@ -74,7 +71,7 @@ impl Driver for TimerDriver {
         })
     }
 
-    fn set_alarm(&self, alarm: embassy_executor::time::driver::AlarmHandle, timestamp: u64) {
+    fn set_alarm(&self, alarm: embassy_time::driver::AlarmHandle, timestamp: u64) {
         let n = alarm.id() as usize;
         critical_section::with(|cs| {
             let mut rm = self.alarms.borrow(cs).borrow_mut();

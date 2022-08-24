@@ -12,7 +12,7 @@ panic-probe = { version = "^0.3", features = ["print-defmt"] }
 
 cortex-m = "0.7.5"
 cortex-m-rt = "0.7.1"
-rp2040-hal = { version = "^0.5", path = "../../../../3rd/rp-hal/rp2040-hal", features = ["eh1_0_alpha", "c_s_alpha", "rt"] }
+rp2040-hal = { version = "^0.5", path = "../../../../3rd/rp-hal/rp2040-hal", features = ["eh1_0_alpha", "rt"] }
 embedded-hal = { version = "0.2.5", features = ["unproven"] }
 rp2040-boot2 = "0.2.0"
 embedded-time = "0.12.1"
@@ -28,11 +28,12 @@ embedded-dma = "^0.2"
 voice_lib = { path = "../voice_lib" }
 tinybmp = "^0.3.3"
 futures = { version = "^0.3", default-features = false }
-embassy-executor = { path = "../../../../3rd/embassy/embassy-executor", features = ["time-tick-1mhz"] }
-embassy-util = { path = "../../../../3rd/embassy/embassy-util" }
+embassy-executor = { path = "../../../../3rd/embassy/embassy-executor", features = ["integrated-timers"]}
+embassy-sync = { path = "../../../../3rd/embassy/embassy-sync" }
+embassy-time = { path = "../../../../3rd/embassy/embassy-time", features = ["tick-1mhz"] }
 logic = { path = "../logic" }
 shared-bus = { version = "^0.2" }
-critical-section = { version = "=1.0.0-alpha.2", features = ["restore-state-u8"] }
+critical-section = { version = "^1.1.0", features = ["restore-state-u8"] }
 linked_list_allocator = { version = "0.10.1", default-features = false, features = ["const_mut_refs"] }
 atomic-polyfill = { version = "^0.1", features = [] }
 

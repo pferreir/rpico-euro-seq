@@ -1,7 +1,7 @@
 use core::{cell::RefCell, fmt::Debug};
 
 use critical_section::{Mutex, CriticalSection, with};
-use embassy_executor::time::{Timer, Duration};
+use embassy_time::{Timer, Duration};
 use defmt::{error, trace};
 use rp2040_hal::pac::Peripherals;
 

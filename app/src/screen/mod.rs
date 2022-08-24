@@ -12,7 +12,7 @@ use cortex_m::{
     delay::Delay,
 };
 use critical_section::{Mutex, with, CriticalSection};
-use embassy_util::waitqueue::AtomicWaker;
+use embassy_sync::waitqueue::AtomicWaker;
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565, prelude::*};
 pub use framebuffer::Framebuffer;
 use logic::screen::{SCREEN_HEIGHT, SCREEN_WIDTH};

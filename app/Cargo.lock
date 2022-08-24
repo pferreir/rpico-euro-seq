@@ -27,6 +27,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "atomic-polyfill"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d299f547288d6db8d5c3a2916f7b2f66134b15b8c1ac1c4357dd3b8752af7bb2"
+dependencies = [
+ "critical-section 1.1.0",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -165,9 +174,9 @@ dependencies = [
 
 [[package]]
 name = "critical-section"
-version = "1.0.0-alpha.2"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "425c7f4aaf5e181b9a58e9238f622755beb8007b8ba4fa52746888f2fc1d6fca"
+checksum = "d02ba51481d019be9c74a831d1133c364d78831b75c833478f3a21e1fd91e01a"
 
 [[package]]
 name = "darling"
@@ -259,12 +268,13 @@ checksum = "3f107b87b6afc2a64fd13cac55fe06d6c8859f12d4b14cbcdd2c67d0976781be"
 name = "embassy-executor"
 version = "0.1.0"
 dependencies = [
- "atomic-polyfill",
+ "atomic-polyfill 1.0.1",
  "cfg-if",
- "critical-section 0.2.7",
+ "critical-section 1.1.0",
  "embassy-macros",
- "embedded-hal 0.2.7",
+ "embassy-time",
  "futures-util",
+ "static_cell",
 ]
 
 [[package]]
@@ -278,14 +288,27 @@ dependencies = [
 ]
 
 [[package]]
-name = "embassy-util"
+name = "embassy-sync"
 version = "0.1.0"
 dependencies = [
- "atomic-polyfill",
+ "atomic-polyfill 1.0.1",
  "cfg-if",
- "critical-section 1.0.0-alpha.2",
+ "critical-section 1.1.0",
+ "embedded-io",
  "futures-util",
  "heapless",
+]
+
+[[package]]
+name = "embassy-time"
+version = "0.1.0"
+dependencies = [
+ "atomic-polyfill 1.0.1",
+ "cfg-if",
+ "critical-section 1.1.0",
+ "embassy-macros",
+ "embedded-hal 0.2.7",
+ "futures-util",
 ]
 
 [[package]]
@@ -338,6 +361,12 @@ checksum = "c3babfc7fd332142a0b11aebf592992f211f4e01b6222fb04b03aba1bd80018d"
 dependencies = [
  "nb 1.0.0",
 ]
+
+[[package]]
+name = "embedded-io"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36673b79844ff4ec0e3f00aeca0b2cfff564ff6739ab9801d13f45a8ec6cc1c7"
 
 [[package]]
 name = "embedded-midi"
@@ -465,7 +494,7 @@ version = "0.7.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f6733da246dc2af610133c8be0667170fd68e8ca5630936b520300eee8846f9"
 dependencies = [
- "atomic-polyfill",
+ "atomic-polyfill 0.1.8",
  "defmt",
  "hash32",
  "rustc_version 0.4.0",
@@ -556,14 +585,15 @@ checksum = "bc4010833aea396656c2f91ee704d51a6f1329ec2ab56ffd00bfd56f7481ea94"
 name = "midi-embedded"
 version = "0.1.0"
 dependencies = [
- "atomic-polyfill",
+ "atomic-polyfill 0.1.8",
  "cortex-m",
  "cortex-m-rt",
- "critical-section 1.0.0-alpha.2",
+ "critical-section 1.1.0",
  "defmt",
  "defmt-rtt",
  "embassy-executor",
- "embassy-util",
+ "embassy-sync",
+ "embassy-time",
  "embedded-dma",
  "embedded-graphics",
  "embedded-hal 0.2.7",
@@ -865,7 +895,7 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "critical-section 0.2.7",
- "critical-section 1.0.0-alpha.2",
+ "critical-section 1.1.0",
  "embedded-hal 0.2.7",
  "embedded-hal 1.0.0-alpha.8",
  "embedded-time",
@@ -991,6 +1021,15 @@ name = "stable_deref_trait"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
+name = "static_cell"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4c37c250d21f53fa7165e76e5401d7e6539c211a8d2cf449e3962956a5cc2ce"
+dependencies = [
+ "atomic-polyfill 1.0.1",
+]
 
 [[package]]
 name = "strsim"

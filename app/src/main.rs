@@ -21,10 +21,10 @@ use allocator::CortexMHeap;
 use core::{alloc::Layout, fmt::Debug};
 use critical_section::{with, Mutex};
 use debounce::DebounceCallback;
-use embassy_executor::executor::{raw::TaskPool, Executor};
-use embassy_executor::time::TICKS_PER_SECOND;
-use embassy_util::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_util::channel::signal::Signal;
+use embassy_executor::{raw::TaskPool, Executor};
+use embassy_time::TICKS_PER_SECOND;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::signal::Signal;
 use futures::Future;
 use gate_cv::GateCVProxy;
 
