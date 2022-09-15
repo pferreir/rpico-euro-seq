@@ -225,7 +225,7 @@ impl BlockDevice for LocalStorageDevice {
     type BlocksFuture<'b> = impl Future<Output = Result<BlockCount, Self::Error>> + 'b;
 
     fn read<'a>(
-        &'a mut self,
+        &'a self,
         blocks: &'a mut [Block],
         BlockIdx(start_block_idx): BlockIdx,
         _reason: &str,
@@ -247,7 +247,7 @@ impl BlockDevice for LocalStorageDevice {
     }
 
     fn write<'a>(
-        &'a mut self,
+        &'a self,
         blocks: &'a [Block],
         BlockIdx(start_block_idx): BlockIdx,
     ) -> Self::WriteFuture<'a> {

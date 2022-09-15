@@ -2,7 +2,7 @@ use core::{
     fmt::Debug, marker::PhantomData, ops::{DerefMut, Deref},
 };
 
-use alloc::{boxed::Box, format, vec::Vec};
+use alloc::{format, boxed::Box};
 use embedded_graphics::{pixelcolor::Rgb565, prelude::*};
 use embedded_midi::{MidiMessage};
 use embedded_sdmmc::{BlockDevice, TimeSource};
@@ -12,21 +12,20 @@ use self::{
     recorder::MonoRecorderBox,
     ui::{
         actions::{UIAction, NUM_UI_ACTIONS},
-        overlays::FileMenu
-    }, config::Config,
+    }, config::Config
 };
 use crate::{
-    log::info,
+    log::{info, error, warning},
     stdlib::{
-        ui::{Overlay, OverlayResult, UIInputEvent},
+        ui::{UIInputEvent, OverlayManager},
         StdlibError,
-        TaskInterface, TaskType, Output, GateChannelId, CVChannelId, FileType,
+        TaskInterface, TaskType, Output, GateChannelId, CVChannelId, TaskResult, FSError, FileContent,
     },
     util::{midi_note_to_lib, DiscreetUnwrap, QueuePoppingIter},
 };
 use voice_lib::{Note, NoteFlag, NotePair};
 
-use super::{Program, ProgramError};
+use super::Program;
 
 mod config;
 mod data;
@@ -34,7 +33,9 @@ mod recorder;
 mod ui;
 
 
+#[derive(Debug, PartialEq)]
 pub(crate) enum State {
+    Loading,
     Stopped,
     Paused(/* at_time: */ u32, /* at_beat: */ u32),
     Playing(/* time: */ u32, /* beat: */ u32),
@@ -44,6 +45,7 @@ pub(crate) enum State {
 impl State {
     pub(crate) fn get_time(&self) -> (u32, u32) {
         match self {
+            State::Loading => (0, 0),
             State::Stopped => (0, 0),
             State::Paused(time, beat) => (*time, *beat),
             State::Playing(time, beat) | State::Recording(time, beat) => (*time, *beat),
@@ -51,90 +53,6 @@ impl State {
     }
 }
 
-pub struct OverlayManager<
-    't,
-    B: BlockDevice,
-    TS: TimeSource,
-    D: DrawTarget<Color = Rgb565>,
-    TI: TaskInterface + 't,
-> where
-    D::Error: Debug,
-{
-    pub(crate) stack:
-        Option<Vec<Box<dyn Overlay<'t, D, SequencerProgram<'t, B, TS, D, TI>, B, TS, TI> + 't>>>,
-    pub(crate) pending_ops:
-        Vec<OverlayResult<'t, D, SequencerProgram<'t, B, TS, D, TI>, B, TS, TI>>,
-}
-
-impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>, TI: TaskInterface>
-    OverlayManager<'t, B, TS, D, TI>
-where
-    D::Error: Debug,
-{
-    fn new() -> Self {
-        let mut stack: Vec<Box<dyn Overlay<'t, D, SequencerProgram<'t, B, TS, D, TI>, B, TS, TI>>> =
-            Vec::new();
-        stack.push(Box::new(FileMenu::default()));
-        Self {
-            stack: Some(stack),
-            pending_ops: Vec::new(),
-        }
-    }
-
-    pub(crate) fn process_input(&mut self, msg: &UIInputEvent) -> Result<bool, ProgramError> {
-        let mut overlays = self.stack.take().unwrap();
-        let res = match overlays.last_mut() {
-            Some(o) => {
-                self.pending_ops.push(o.process_ui_input(msg));
-                true
-            }
-            None => false,
-        };
-        self.stack.replace(overlays);
-        Ok(res)
-    }
-
-    pub(crate) fn draw(&mut self, screen: &mut D) {
-        let mut overlays = self.stack.take().unwrap();
-        for overlay in overlays.iter_mut() {
-            overlay.draw(screen).duwrp();
-        }
-        self.stack.replace(overlays);
-    }
-
-    pub(crate) fn run(
-        &mut self,
-        program: &mut SequencerProgram<'t, B, TS, D, TI>,
-        task_iface: &mut TI,
-    ) {
-        let mut overlays = self.stack.take().unwrap();
-
-        for overlay in overlays.iter_mut() {
-            match overlay.run().duwrp() {
-                Some(f) => f(program, task_iface).unwrap(),
-                None => {}
-            }
-        }
-
-        for operation in self.pending_ops.drain(0..(self.pending_ops.len())) {
-            match operation {
-                OverlayResult::Nop => {}
-                OverlayResult::Push(o) => {
-                    overlays.push(o);
-                }
-                OverlayResult::Replace(o) => {
-                    overlays.push(o);
-                }
-                OverlayResult::Close => {
-                    overlays.pop();
-                }
-                OverlayResult::CloseOnSignal(_) => {}
-            }
-        }
-
-        self.stack.replace(overlays);
-    }
-}
 
 pub struct SequencerProgram<
     't,
@@ -157,7 +75,7 @@ pub struct SequencerProgram<
 
     // UI
     pub(crate) selected_action: UIAction,
-    pub(crate) overlay_manager: Option<OverlayManager<'t, B, TS, D, TI>>,
+    pub(crate) overlay_manager: Option<OverlayManager<'t, Self, B, TS, D, TI>>,
 
     _d: PhantomData<D>,
 }
@@ -167,19 +85,13 @@ impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>, TI: Task
 where
     <D as DrawTarget>::Error: Debug,
 {
-    fn save(&mut self, file_name: String<12>) -> Result<TaskType, StdlibError> {
+    fn save(&mut self, file_name: String<8>) -> Result<TaskType, StdlibError> {
         self.recorder.set_file_name(&file_name);
         self.recorder.save_file()
     }
 
-    fn _check_task_returns(&mut self, task_iface: &mut impl TaskInterface) {
-        while let Ok(Some((id, result))) = task_iface.pop() {
-            info(&format!("Task {} result: {:?}", id, result));
-        }
-    }
-
     fn _first_run(&mut self, task_iface: &mut TI) {
-        task_iface.submit(TaskType::FileLoad(FileType::Config, "sequencer".into()));
+        task_iface.submit(TaskType::FileLoad("cfg".into(), "config.cbr".into())).unwrap();
     }
 }
 
@@ -201,7 +113,7 @@ where
             bpm: 50,
             midi_queue: Queue::new(),
             recorder: MonoRecorderBox::new(),
-            state: State::Stopped,
+            state: State::Loading,
 
             // UI
             selected_action: UIAction::PlayPause,
@@ -218,7 +130,7 @@ where
         self.overlay_manager.replace(overlay_manager);
     }
 
-    fn process_ui_input<'u>(&'u mut self, msg: &'u UIInputEvent) -> Result<(), ProgramError>
+    fn process_ui_input<'u>(&'u mut self, msg: &'u UIInputEvent) -> Result<(), StdlibError>
     where
         't: 'u,
     {
@@ -247,7 +159,7 @@ where
                     UIAction::PlayPause => match self.state {
                         State::Playing(_, _) => State::Paused(state_time, state_beat),
                         State::Paused(time, beat) => State::Playing(time, beat),
-                        State::Stopped | State::Recording(_, _) => State::Playing(0, 0),
+                        State::Loading | State::Stopped | State::Recording(_, _) => State::Playing(0, 0),
                     },
                     UIAction::Stop => State::Stopped,
                     UIAction::Record => State::Recording(state_time, state_beat),
@@ -366,10 +278,38 @@ where
             }
         }
 
-        self._check_task_returns(task_iface);
+        // Process tasks
+        while let Ok(Some((id, result))) = task_iface.pop() {
+            // TODO: propagate until dialog
+            info(&format!("Task {} result: {:?}", id, result));
 
+            if self.state == State::Loading {
+                match result {
+                    TaskResult::FileContent(content) => {
+                        info(&format!("Config loaded: {:?}", content));
+                        // set state to stopped
+                        self.state = State::Stopped;
+                    },
+                    TaskResult::Error(StdlibError::FS(FSError::FileNotFound)) => {
+                        warning("Config file doesn't exist. Creating one.");
+                        let task = TaskType::FileSave("cfg".into(), "config.cbr".into(), Box::new(Config::default()));
+                        task_iface.submit(task).expect("Unable to submit task");
+                    },
+                    TaskResult::Done => {
+                        warning("Done. Trying to read again...");
+                        // done creating config file. read again.
+                        let task = TaskType::FileLoad("cfg".into(), "config.cbr".into());
+                        task_iface.submit(task).expect("Unable to submit task");
+                    }
+                    res => {
+                        error(&format!("Completely unexpected task result: {:?}", res));
+                    }
+                }
+            }
+        }
+    
         let mut overlay_manager = self.overlay_manager.take().unwrap();
-        overlay_manager.run(self, task_iface);
+        overlay_manager.run(self, task_iface).unwrap();
         self.overlay_manager.replace(overlay_manager);
     }
 }

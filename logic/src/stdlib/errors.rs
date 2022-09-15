@@ -5,9 +5,9 @@ use embedded_sdmmc::{Error as ESDMMCError};
 
 use super::{Closed, File};
 
-pub struct StdlibErrorFileWrapper<F: File<Closed>>(pub StdlibError, pub F);
+pub struct StdlibErrorFileWrapper(pub StdlibError, pub Option<File<Closed>>);
 
-impl<F: File<Closed>> Debug for StdlibErrorFileWrapper<F> {
+impl Debug for StdlibErrorFileWrapper {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_tuple("StdlibErrorFileWrapper")
             .field(&self.0)
@@ -21,6 +21,7 @@ pub enum StdlibError {
     FS(FSError),
     Serialization,
     Deserialization,
+    TaskInterface(String)
 }
 
 #[derive(Debug)]

@@ -1,9 +1,9 @@
 use embedded_graphics::{draw_target::DrawTarget, pixelcolor::Rgb565};
 use embedded_sdmmc::{BlockDevice, TimeSource};
 
-use crate::{programs::Program, stdlib::TaskInterface};
+use crate::{programs::Program, stdlib::{TaskInterface, TaskType}};
 
-use super::{Overlay, OverlayResult, UIInputEvent};
+use super::{UIInputEvent, overlays::{Overlay, OverlayResult}};
 
 pub trait MenuOptions {}
 
@@ -34,8 +34,9 @@ pub trait MenuDef<
 #[macro_export]
 macro_rules! impl_overlay {
     ($t: ident, $p: ident) => {
+        use alloc::vec::Vec;
         use crate::screen::{SCREEN_HEIGHT, SCREEN_WIDTH};
-        use crate::stdlib::{ui::Overlay, StdlibError, TaskInterface};
+        use crate::stdlib::{ui::{Overlay, OverlayResult}, StdlibError};
         use embedded_graphics::{
             mono_font::MonoTextStyle,
             primitives::{PrimitiveStyleBuilder, Rectangle},
@@ -120,7 +121,7 @@ macro_rules! impl_overlay {
             fn run<'u>(
                 &'u mut self,
             ) -> Result<
-                Option<Box<dyn FnOnce(&mut $p<'t, B, TS, D, TI>, &mut TI) -> Result<(), StdlibError>>>,
+                Option<Box<dyn FnOnce(&mut $p<'t, B, TS, D, TI>) -> Result<Vec<TaskType>, StdlibError>>>,
                 StdlibError,
             >
             {

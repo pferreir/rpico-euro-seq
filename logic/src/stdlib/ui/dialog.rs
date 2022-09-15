@@ -3,7 +3,8 @@ use embedded_sdmmc::{BlockDevice, TimeSource};
 
 use crate::{programs::Program, stdlib::TaskInterface};
 
-use super::Overlay;
+use super::overlays::Overlay;
+
 
 pub trait Dialog<
     't,

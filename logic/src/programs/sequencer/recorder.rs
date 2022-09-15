@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use alloc::boxed::Box;
 use heapless::{String, Vec};
 use ufmt::uwrite;
 use voice_lib::{NoteFlag, NotePair, VoiceTrack};
@@ -12,7 +13,7 @@ const NUM_VOICES: usize = 2;
 const DEFAULT_SIZE: usize = 16;
 
 pub(crate) struct MonoRecorderBox<'t> {
-    file: SequenceFile,
+    file_name: String<8>,
     pub voice_state: VoiceTrack,
     current_note: Vec<NotePair, NUM_VOICES>,
     keys_changed: bool,
@@ -22,7 +23,7 @@ pub(crate) struct MonoRecorderBox<'t> {
 impl<'t> MonoRecorderBox<'t> {
     pub(crate) fn new() -> Self {
         Self {
-            file: SequenceFile::new("default"),
+            file_name: "unnamed".into(),
             voice_state: VoiceTrack::new(DEFAULT_SIZE),
             current_note: Vec::new(),
             keys_changed: false,
@@ -74,11 +75,13 @@ impl<'t> MonoRecorderBox<'t> {
         self.voice_state.since(t, num)
     }
 
-    pub(crate) fn set_file_name(&mut self, file_name: &String<12>) {
-        self.file.set_name(file_name);
+    pub(crate) fn set_file_name(&mut self, file_name: &String<8>) {
+        self.file_name = file_name.clone();
     }
 
     pub(crate) fn save_file(&mut self) -> Result<TaskType, StdlibError> {
-        Ok(self.file.save()?)
+        let mut file_name: String<12> = String::from(&self.file_name as &str);
+        file_name.push_str(".seq").duwrp();
+        Ok(TaskType::FileSave("data".into(), file_name, Box::new(SequenceFile::new(&self.file_name))))
     }
 }

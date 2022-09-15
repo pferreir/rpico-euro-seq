@@ -9,7 +9,7 @@ use embedded_graphics::{
 };
 use embedded_sdmmc::{BlockDevice, TimeSource};
 
-use crate::{programs::{sequencer::State, SequencerProgram}, util::DiscreetUnwrap, stdlib::TaskInterface};
+use crate::{programs::{sequencer::State, SequencerProgram}, util::DiscreetUnwrap, stdlib::{TaskInterface, TaskType}};
 
 use super::icons;
 
@@ -59,9 +59,9 @@ impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>, TI: Task
     {
         Image::new(
             if let State::Playing(_, _) = self.state {
-                icons::pause()
+                icons::PAUSE()
             } else {
-                icons::play()
+                icons::PLAY()
             },
             pos + UIAction::PlayPause.button_pos(),
         )
@@ -69,9 +69,9 @@ impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>, TI: Task
         .duwrp();
         Image::new(
             if let State::Stopped = self.state {
-                icons::stop_on()
+                icons::STOP_ON()
             } else {
-                icons::stop()
+                icons::STOP()
             },
             pos + UIAction::Stop.button_pos(),
         )
@@ -79,18 +79,18 @@ impl<'t, B: BlockDevice, TS: TimeSource, D: DrawTarget<Color = Rgb565>, TI: Task
         .duwrp();
         Image::new(
             if let State::Recording(_, _) = self.state {
-                icons::record_on()
+                icons::RECORD_ON()
             } else {
-                icons::record()
+                icons::RECORD()
             },
             pos + UIAction::Record.button_pos(),
         )
         .draw(screen)
         .duwrp();
-        Image::new(icons::beginning(), pos + UIAction::Beginning.button_pos())
+        Image::new(icons::BEGINNING(), pos + UIAction::Beginning.button_pos())
             .draw(screen)
             .duwrp();
-        Image::new(icons::seek(), pos + UIAction::Seek.button_pos())
+        Image::new(icons::SEEK(), pos + UIAction::Seek.button_pos())
             .draw(screen)
             .duwrp();
 

@@ -152,7 +152,7 @@ where
     <SPI as Transfer<u8>>::Error: Debug,
     <SPI as Write<u8>>::Error: Debug,
 {
-    let spi = SdMmcSpi::new(spi_bus.acquire_spi(), cs_mmc);
+    let mut spi: SdMmcSpi<_, _> = SdMmcSpi::new(spi_bus.acquire_spi(), cs_mmc);
     let bspi = spi.acquire().await.map_err(TaskManagerTaskError::SPI)?;
 
     let fs = FileSystem::new(bspi, DummyTime)
@@ -163,9 +163,9 @@ where
     let output = gate_cv::GateCVOut::new(
         // DAC
         spi_bus.acquire_spi(),
+        cs_out,
         clk,
         mosi,
-        cs_out,
         // gates
         gate1,
         gate2,

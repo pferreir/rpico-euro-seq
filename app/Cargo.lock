@@ -381,7 +381,7 @@ dependencies = [
 
 [[package]]
 name = "embedded-sdmmc"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "byteorder",
  "defmt",
@@ -556,15 +556,15 @@ dependencies = [
  "profont",
  "serde",
  "tinybmp",
- "ufmt",
+ "ufmt 0.2.0",
  "voice_lib",
 ]
 
 [[package]]
 name = "mcp49xx"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f659b66770742849251c5135ab412e57da3b778f479b6546812f9e15264e36cb"
+checksum = "740cccf78634b060fb4e48a34da4060ccd7ea9ef862854adf60a90c2c5c0f586"
 dependencies = [
  "embedded-hal 0.2.7",
 ]
@@ -612,7 +612,7 @@ dependencies = [
  "rp2040-hal",
  "shared-bus",
  "tinybmp",
- "ufmt",
+ "ufmt 0.1.0",
  "voice_lib",
 ]
 
@@ -1065,7 +1065,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e7ecea7ef79d3f8f878eee614afdf5256475c63ad76139d4da6125617c784a0"
 dependencies = [
  "proc-macro-hack",
- "ufmt-macros",
+ "ufmt-macros 0.1.1",
+ "ufmt-write",
+]
+
+[[package]]
+name = "ufmt"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a64846ec02b57e9108d6469d98d1648782ad6bb150a95a9baac26900bbeab9d"
+dependencies = [
+ "ufmt-macros 0.3.0",
  "ufmt-write",
 ]
 
@@ -1076,6 +1086,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed813e34a2bfa9dc58ee2ed8c8314d25e6d70c911486d64b8085cb695cfac069"
 dependencies = [
  "proc-macro-hack",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "ufmt-macros"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d337d3be617449165cb4633c8dece429afd83f84051024079f97ad32a9663716"
+dependencies = [
  "proc-macro2",
  "quote",
  "syn",
@@ -1117,7 +1138,7 @@ version = "0.1.0"
 dependencies = [
  "heapless",
  "serde",
- "ufmt",
+ "ufmt 0.2.0",
 ]
 
 [[package]]

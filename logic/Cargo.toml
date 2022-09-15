@@ -15,7 +15,7 @@ embedded-midi = "^0.1"
 embedded-sdmmc = { path = "../embedded-sdmmc-rs", default-features = false, features = ["defmt-log"]}
 voice_lib = { path = "../voice_lib" }
 serde = { version = "^1.0", default-features = false, features = ["derive", "alloc"] }
-ufmt = "^0.1"
+ufmt = "^0.2"
 alloc-cortex-m = { version = "^0.4", optional = true }
 ciborium = {version = "^0.2", default-features = false, features = [] }
 ciborium-io = {version = "^0.2"}

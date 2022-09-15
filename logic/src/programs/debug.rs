@@ -12,7 +12,7 @@ use embedded_sdmmc::{BlockDevice, TimeSource};
 use heapless::{spsc::Queue, String};
 use ufmt::uwrite;
 
-use crate::stdlib::{TaskInterface, ui::UIInputEvent};
+use crate::stdlib::{TaskInterface, ui::UIInputEvent, StdlibError};
 
 use super::{Program, ProgramError};
 
@@ -65,7 +65,7 @@ where
         }
     }
 
-    fn process_ui_input<'u>(&mut self, msg: &'u UIInputEvent) -> Result<(), ProgramError>
+    fn process_ui_input<'u>(&mut self, msg: &'u UIInputEvent) -> Result<(), StdlibError>
     where
         't: 'u,
         <D as DrawTarget>::Error: Debug,

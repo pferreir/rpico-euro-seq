@@ -19,6 +19,12 @@ pub enum ProgramError {
     Stdlib(StdlibError),
 }
 
+impl From<StdlibError> for ProgramError {
+    fn from(err: StdlibError) -> Self {
+        ProgramError::Stdlib(err)
+    }
+}
+
 pub trait Program<
     't,
     B: BlockDevice + 't,
@@ -29,7 +35,7 @@ pub trait Program<
 {
     fn new() -> Self;
     fn process_midi(&mut self, _msg: &MidiMessage) {}
-    fn process_ui_input<'u>(&'u mut self, msg: &'u UIInputEvent) -> Result<(), ProgramError>
+    fn process_ui_input<'u>(&'u mut self, msg: &'u UIInputEvent) -> Result<(), StdlibError>
     where
         't: 'u,
         <D as DrawTarget>::Error: Debug;

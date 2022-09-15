@@ -7,7 +7,6 @@ use defmt::trace;
 use embedded_hal::blocking::spi::Write;
 use embedded_hal::digital::v2::{OutputPin, PinState};
 use logic::stdlib::{CVChannel, CVChannelId, Channel, GateChannel, GateChannelId, Output};
-use mcp49xx::interface::SpiInterface;
 use mcp49xx::marker::{DualChannel, Resolution12Bit, Unbuffered};
 use mcp49xx::{Channel as MCPChannel, Command, Mcp49xx};
 use rp2040_hal::gpio::bank0::{Gpio10, Gpio11, Gpio4, Gpio5, Gpio9};
@@ -94,7 +93,8 @@ pub struct GateCVOut<
     G1: PinId + BankPinId,
 > {
     driver: Mcp49xx<
-        SpiInterface<SPI, Pin<CS, PushPullOutput>>,
+        Pin<CS, PushPullOutput>,
+        SPI,
         Resolution12Bit,
         DualChannel,
         Unbuffered,
@@ -102,6 +102,7 @@ pub struct GateCVOut<
     _clk: PhantomData<CLK>,
     _mosi: PhantomData<MOSI>,
     _cs: PhantomData<CS>,
+    spi: SPI,
     gate0: Pin<G0, PushPullOutput>,
     gate1: Pin<G1, PushPullOutput>,
 }
@@ -120,18 +121,19 @@ where
     pub fn new(
         // DAC
         spi: SPI,
+        cs: Pin<CS, PushPullOutput>,
         _clk: Pin<CLK, FunctionSpi>,
         _mosi: Pin<MOSI, FunctionSpi>,
-        cs: Pin<CS, PushPullOutput>,
         // gates
         gate1: Pin<G1, PushPullOutput>,
         gate2: Pin<G2, PushPullOutput>,
     ) -> Self {
         Self {
-            driver: Mcp49xx::new_mcp4822(spi, cs),
+            driver: Mcp49xx::new_mcp4822(cs),
             _clk: PhantomData,
             _mosi: PhantomData,
             _cs: PhantomData,
+            spi,
             gate0: gate1,
             gate1: gate2,
         }
@@ -151,7 +153,7 @@ where
 
         let cmd = Command::default();
         let cmd = cmd.channel(MCPChannel::Ch0).double_gain().value(cv0.into());
-        self.driver.send(cmd).unwrap();
+        self.driver.send(&mut self.spi, cmd).unwrap();
 
         // channel 1
         self.gate1
@@ -160,7 +162,7 @@ where
 
         let cmd = Command::default();
         let cmd = cmd.channel(MCPChannel::Ch1).double_gain().value(cv1.into());
-        self.driver.send(cmd).unwrap();
+        self.driver.send(&mut self.spi, cmd).unwrap();
     }
 }
 

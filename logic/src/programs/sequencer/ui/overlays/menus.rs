@@ -7,7 +7,7 @@ use embedded_sdmmc::{BlockDevice, TimeSource};
 use crate::{
     impl_overlay, log,
     programs::{SequencerProgram},
-    stdlib::ui::{MenuDef, MenuOptions, OverlayResult, UIInputEvent},
+    stdlib::{ui::{MenuDef, MenuOptions, UIInputEvent}, TaskType, TaskInterface},
     util::DiscreetUnwrap,
 };
 

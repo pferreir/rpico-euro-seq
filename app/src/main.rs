@@ -22,7 +22,7 @@ use core::{alloc::Layout, fmt::Debug};
 use critical_section::{with, Mutex};
 use debounce::DebounceCallback;
 use embassy_executor::{raw::TaskPool, Executor};
-use embassy_time::TICKS_PER_SECOND;
+use embassy_time::{TICKS_PER_SECOND, Timer as EmbassyTimer, Duration};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 use futures::Future;
@@ -118,10 +118,10 @@ impl TimeSource for DummyTime {
     }
 }
 
-type BlockDeviceType<SPI> = BlockSpi<SPI, Pin<Gpio8, Output<PushPull>>>;
+type BlockDeviceType<'t, SPI> = BlockSpi<'t, SPI, Pin<Gpio8, Output<PushPull>>>;
 
-trait ProgramType<'t, SPI: Transfer<u8>> =
-    Program<'t, BlockDeviceType<SPI>, Framebuffer, DummyTime, EmbeddedTaskInterface<'t>>
+trait ProgramType<'t, SPI: Transfer<u8> + 'static> =
+    Program<'t, BlockDeviceType<'t, SPI>, Framebuffer, DummyTime, EmbeddedTaskInterface<'t>>
     where
         <SPI as Transfer<u8>>::Error: Debug,
         SPI: 't;
@@ -133,7 +133,7 @@ async fn main_loop<'t>(
     mut delay: cortex_m::delay::Delay,
     mut task_iface: EmbeddedTaskInterface<'t>,
     mut output: GateCVProxy,
-) -> Result<(), StdlibError>
+) -> Result<(), ProgramError>
 where
     SpiProxy<'t, NullMutex<Spi<Enabled, pac::SPI0, 8>>>: Transfer<u8>,
     <SpiProxy<'t, NullMutex<Spi<Enabled, pac::SPI0, 8>>> as Transfer<u8>>::Error: Debug,
@@ -337,7 +337,7 @@ fn main() -> ! {
 
     let pins = (
         pins.gpio10.into_mode::<hal::gpio::FunctionSpi>(),
-        pins.gpio12.into_mode::<hal::gpio::FunctionSpi>(),
+        pins.gpio12.into_pull_up_input().into_mode::<hal::gpio::FunctionSpi>(),
         pins.gpio11.into_mode::<hal::gpio::FunctionSpi>(),
         pins.gpio9.into_push_pull_output(),
         pins.gpio8.into_push_pull_output(),

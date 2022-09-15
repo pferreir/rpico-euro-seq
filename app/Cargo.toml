@@ -22,7 +22,7 @@ embedded-sdmmc = { path = "../embedded-sdmmc-rs", default-features = false, feat
 nb = "1.0.0"
 ufmt = "0.1.0"
 heapless = { version = "^0.7.15", features = ["ufmt-impl"] }
-mcp49xx = "0.2.0"
+mcp49xx = "0.3.0"
 rotary-encoder-embedded = "^0.1"
 embedded-dma = "^0.2"
 voice_lib = { path = "../voice_lib" }

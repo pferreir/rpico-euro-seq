@@ -1,4 +1,4 @@
-use alloc::{boxed::Box};
+use alloc::{boxed::Box, vec::Vec};
 use core::{any::Any, fmt::Debug};
 use embedded_graphics::{
     draw_target::DrawTarget,
@@ -19,14 +19,22 @@ use crate::{
         ui::{
             select::{Message, SelectGroup},
             Button, ButtonId, DynDrawable, Input, Overlay, OverlayResult, UIInputEvent,
-        }, StdlibError, TaskInterface,
+        }, StdlibError, TaskInterface, TaskType,
     },
     util::DiscreetUnwrap,
 };
 
+#[derive(Debug, PartialEq)]
+enum FileLoadDialogState {
+    Initializing,
+    Loading,
+    Loaded
+}
+
 pub(crate) struct FileLoadDialog<T: DrawTarget<Color = Rgb565>> {
     sg: SelectGroup<T>,
-    file_name: String<12>,
+    file_name: String<8>,
+    state: FileLoadDialogState,
 }
 
 impl<T: DrawTarget<Color = Rgb565>> Default for FileLoadDialog<T> {
@@ -34,6 +42,8 @@ impl<T: DrawTarget<Color = Rgb565>> Default for FileLoadDialog<T> {
         Self {
             sg: SelectGroup::new(),
             file_name: String::new(),
+
+            state: FileLoadDialogState::Initializing
         }
     }
 }
@@ -54,17 +64,49 @@ impl<
         OverlayResult::Nop
     }
 
-    fn draw(&self, _target: &mut D) -> Result<(), <D as DrawTarget>::Error> {
-        todo!()
+    fn draw(&self, target: &mut D) -> Result<(), <D as DrawTarget>::Error> {
+        let window_style = PrimitiveStyleBuilder::new()
+            .fill_color(Rgb565::CSS_DARK_GRAY)
+            .build();
+        let text_style_title = MonoTextStyle::new(&PROFONT_14_POINT, Rgb565::YELLOW);
+
+        let rect = Rectangle::new(
+            Point::new(10, 10),
+            Size::new(SCREEN_WIDTH as u32 - 20, SCREEN_HEIGHT as u32 - 20),
+        );
+
+        // Dialog frame
+        rect.into_styled(window_style).draw(target)?;
+
+        Text::with_alignment(
+            "FOOO",
+            Point::new(SCREEN_WIDTH as i32 / 2, 23),
+            text_style_title,
+            embedded_graphics::text::Alignment::Center,
+        )
+        .draw(target)?;
+    
+        Ok(())
     }
 
     fn run<'u>(
         &'u mut self,
     ) -> Result<
-        Option<Box<dyn FnOnce(&mut P, &mut TI) -> Result<(), StdlibError> + 'u>>,
+        Option<Box<dyn FnOnce(&mut P) -> Result<Vec<TaskType>, StdlibError> + 'u>>,
         StdlibError,
     > {
-        todo!()
+        if self.state == FileLoadDialogState::Initializing {
+            self.state = FileLoadDialogState::Loading;
+
+            Ok(Some(Box::new(
+                |_| {
+                    let task = crate::stdlib::TaskType::DirList("data".into());
+                    Ok(alloc::vec![task])
+                },
+            )))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -111,7 +153,7 @@ impl ButtonId for CancelButton {
 }
 
 pub(crate) struct FileSaveDialog<T: DrawTarget<Color = Rgb565>> {
-    file_name: String<12>,
+    file_name: String<8>,
     save: bool,
     sg: SelectGroup<T>,
 }
@@ -199,9 +241,8 @@ where
     ) -> Result<
         Option<Box<
             dyn FnOnce(
-                    &mut SequencerProgram<'t, B, TS, T, TI>,
-                    &mut TI,
-                ) -> Result<(), StdlibError>
+                    &mut SequencerProgram<'t, B, TS, T, TI>
+                ) -> Result<Vec<TaskType>, StdlibError>
                 + 'u,
         >>,
         StdlibError,
@@ -209,10 +250,9 @@ where
         if self.save {
             self.save = false;
             Ok(Some(Box::new(
-                |program, task_iface| {
+                |program| {
                     let task = program.save(self.file_name.clone())?;
-                    task_iface.submit(task).duwrp();
-                    Ok(())
+                    Ok(alloc::vec![task])
                 },
             )))
         } else {

@@ -1,4 +1,4 @@
-use crate::{util::DiscreetUnwrap, stdlib::TaskInterface};
+use crate::{util::DiscreetUnwrap, stdlib::{TaskInterface, TaskType}};
 use core::{
     cmp::{max, min},
     fmt::Debug,
@@ -88,13 +88,13 @@ where
     }
 
     pub(crate) fn draw_notes<
-        I: IntoIterator<Item = (usize, Option<(Option<NotePair>, NoteFlag)>)>,
+        IN: IntoIterator<Item = (usize, Option<(Option<NotePair>, NoteFlag)>)>,
     >(
         &self,
         top: i32,
         from_note: u8,
         start_time: i32,
-        slots: I,
+        slots: IN,
         screen: &mut D,
     ) where
         D: DrawTarget<Color = Rgb565>,
